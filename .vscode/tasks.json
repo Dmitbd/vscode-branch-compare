@@ -2,9 +2,9 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "npm: watch",
+      "label": "npm: sandbox",
       "type": "npm",
-      "script": "watch",
+      "script": "sandbox",
       "isBackground": true,
       "problemMatcher": {
         "base": "$tsc-watch",

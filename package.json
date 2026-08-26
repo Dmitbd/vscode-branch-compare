@@ -36,7 +36,7 @@
       { "command": "branchCompare.selectBase", "title": "Branch Compare: Select Base Branch" },
       { "command": "branchCompare.selectCompare", "title": "Branch Compare: Select Compare Branch" },
       { "command": "branchCompare.fetch", "title": "fetch — обновить данные с сервера", "icon": "$(cloud-download)" },
-      { "command": "branchCompare.refresh", "title": "refresh — перечитать локальные данные", "icon": "$(refresh)" },
+      { "command": "branchCompare.refresh", "title": "refresh — обновить локальные данные", "icon": "$(refresh)" },
       { "command": "branchCompare.swap", "title": "swap — поменять направление сравнения", "icon": "$(arrow-swap)" },
       { "command": "branchCompare.openDiff", "title": "Branch Compare: Open Full Diff" }
     ],
@@ -51,6 +51,8 @@
   "scripts": {
     "build": "node esbuild.mjs",
     "watch": "node esbuild.mjs --watch",
+    "sandbox:prepare": "node .vscode/prepare-sandbox.mjs",
+    "sandbox": "npm run sandbox:prepare && npm run watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

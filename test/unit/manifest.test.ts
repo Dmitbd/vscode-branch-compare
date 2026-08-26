@@ -26,7 +26,7 @@ describe('extension manifest', () => {
 
     expect(commandTitles).toMatchObject({
       'branchCompare.fetch': 'fetch — обновить данные с сервера',
-      'branchCompare.refresh': 'refresh — перечитать локальные данные',
+      'branchCompare.refresh': 'refresh — обновить локальные данные',
       'branchCompare.swap': 'swap — поменять направление сравнения',
     });
   });

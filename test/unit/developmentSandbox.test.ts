@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 
 const readJson = (path: string) => JSON.parse(readFileSync(resolve(path), 'utf8'));
@@ -14,19 +14,37 @@ describe('Cursor development sandbox', () => {
       name: 'Run Branch Compare in Cursor',
       type: 'extensionHost',
       request: 'launch',
-      preLaunchTask: 'npm: watch',
+      preLaunchTask: 'npm: sandbox',
       args: [
+        '${workspaceFolder}/.vscode-test/sandbox-repository',
         '--extensionDevelopmentPath=${workspaceFolder}',
-        '${workspaceFolder}',
       ],
     }));
 
     expect(tasks.tasks).toContainEqual(expect.objectContaining({
-      label: 'npm: watch',
+      label: 'npm: sandbox',
       type: 'npm',
-      script: 'watch',
+      script: 'sandbox',
       isBackground: true,
     }));
+  });
+
+  it('prepares a disposable repository with divergent branches', () => {
+    const manifest = readJson('package.json');
+    expect(manifest.scripts['sandbox:prepare']).toBe('node .vscode/prepare-sandbox.mjs');
+    expect(manifest.scripts.sandbox).toBe('npm run sandbox:prepare && npm run watch');
+
+    execFileSync(process.execPath, ['.vscode/prepare-sandbox.mjs'], { cwd: resolve('.') });
+
+    const sandboxRoot = resolve('.vscode-test/sandbox-repository');
+    const git = (...args: string[]) => execFileSync('git', args, {
+      cwd: sandboxRoot,
+      encoding: 'utf8',
+    }).trim();
+
+    expect(git('branch', '--show-current')).toBe('feature/demo');
+    expect(git('for-each-ref', '--format=%(refname:short)', 'refs/heads')).toBe('feature/demo\nmain');
+    expect(git('diff', '--name-only', 'main..feature/demo')).toBe('src/example.ts\nsrc/new.ts');
   });
 
   it('signals when the initial watched build is ready', async () => {
