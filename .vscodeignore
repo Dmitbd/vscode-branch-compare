@@ -1,0 +1,16 @@
+.vscode/**
+.vscode-test/**
+.github/**
+.git/**
+.gitignore
+.superpowers/**
+src/**
+test/**
+tsconfig.json
+tsconfig.extension-test.json
+vitest.config.ts
+esbuild.mjs
+node_modules/**
+dist-test/**
+dist/**/*.map
+*.vsix

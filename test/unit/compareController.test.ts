@@ -1,0 +1,360 @@
+import { describe, expect, test, vi } from 'vitest';
+
+vi.mock('vscode', () => ({
+  commands: { executeCommand: vi.fn(async () => undefined) },
+  Uri: class Uri {},
+}));
+
+import {
+  CompareController,
+  type CompareControllerUi,
+  type ControllerCancellationTokenSource,
+  type ControllerDependencies,
+  type RefPickItem,
+  type RepositoryPickItem,
+} from '../../src/controller/compareController';
+import type { ComparisonResult, ComparisonSelection, GitRef } from '../../src/domain/model';
+import type { GitAdapter } from '../../src/git/gitAdapter';
+import type { RepositorySnapshot } from '../../src/repositories/repositoryProvider';
+import { MissingRefError, NoCommonAncestorError } from '../../src/compare/comparisonService';
+import { technicalErrorText, toUserFacingError } from '../../src/errors/userFacingError';
+
+const localFeature: GitRef = {
+  fullName: 'refs/heads/feature/x', displayName: 'feature/x', kind: 'local', commit: 'b'.repeat(40),
+};
+const localMain: GitRef = {
+  fullName: 'refs/heads/main', displayName: 'main', kind: 'local', commit: 'a'.repeat(40),
+};
+const remoteMain: GitRef = {
+  fullName: 'refs/remotes/origin/main', displayName: 'origin/main', kind: 'remote', remote: 'origin', commit: 'a'.repeat(40),
+};
+const remoteDevelop: GitRef = {
+  fullName: 'refs/remotes/upstream/develop', displayName: 'upstream/develop', kind: 'remote', remote: 'upstream', commit: 'c'.repeat(40),
+};
+
+function repository(id = 'repo-1', currentBranch = 'feature/x', remotes = ['origin']): RepositorySnapshot {
+  return {
+    id,
+    rootUri: {
+      fsPath: `/workspace/${id}`,
+      toString: () => `file:///workspace/${id}`,
+    },
+    currentBranch,
+    remotes,
+  } as unknown as RepositorySnapshot;
+}
+
+function comparison(selection: ComparisonSelection, marker = 'result'): ComparisonResult {
+  return {
+    selection,
+    baseSha: 'a'.repeat(40),
+    compareSha: 'b'.repeat(40),
+    mergeBaseSha: marker === 'result' ? 'c'.repeat(40) : 'd'.repeat(40),
+    files: [{ status: 'modified', oldPath: `${marker}.ts`, newPath: `${marker}.ts` }],
+  };
+}
+
+function deferred<T>(): { promise: Promise<T>; resolve(value: T): void } {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
+function harness(options?: {
+  repositories?: RepositorySnapshot[];
+  refs?: GitRef[];
+  remoteHead?: string;
+  openDiff?: ControllerDependencies['openDiff'];
+}) {
+  const repositories = options?.repositories ?? [repository()];
+  const refs = options?.refs ?? [localFeature, localMain, remoteMain, remoteDevelop];
+  const treeInputs: unknown[] = [];
+  const saved: ComparisonSelection[] = [];
+  const refPicks: RefPickItem[][] = [];
+  const repositoryPicks: RepositoryPickItem[][] = [];
+  let nextRef: GitRef | undefined;
+  let nextRepository: RepositorySnapshot | undefined;
+
+  const adapter = {
+    listRefs: vi.fn(async () => refs),
+    findRemoteHead: vi.fn(async () => options?.remoteHead),
+    fetch: vi.fn(async () => undefined),
+  } as unknown as GitAdapter;
+  const compare = vi.fn(async (_root: string, selection: ComparisonSelection) => comparison(selection));
+  const save = vi.fn(async (_id: string, selection: ComparisonSelection) => { saved.push(selection); });
+  const ui: CompareControllerUi = {
+    pickRepository: vi.fn(async (items) => {
+      repositoryPicks.push([...items]);
+      return nextRepository;
+    }),
+    pickRef: vi.fn(async (items) => {
+      refPicks.push([...items]);
+      return nextRef;
+    }),
+    withProgress: vi.fn(async (_title, task) => task()),
+    showError: vi.fn(async () => undefined),
+  };
+  const deps: ControllerDependencies = {
+    repositories: { get repositories() { return repositories; } },
+    git: adapter,
+    comparisonService: { compare },
+    selectionStore: {
+      load: vi.fn(async () => undefined),
+      save,
+    },
+    tree: { setInput: vi.fn((input) => treeInputs.push(input)) },
+    ui,
+    output: { appendLine: vi.fn(), show: vi.fn() },
+    createCancellationTokenSource: () => cancellationSource(),
+    openDiff: options?.openDiff,
+  };
+  return {
+    adapter, compare, save, deps, refs, repositories, treeInputs, saved, refPicks, repositoryPicks,
+    setNextRef(value: GitRef | undefined) { nextRef = value; },
+    setNextRepository(value: RepositorySnapshot | undefined) { nextRepository = value; },
+  };
+}
+
+describe('CompareController', () => {
+  test('selects the only repository without a picker and initializes compare from the current branch', async () => {
+    const h = harness({ remoteHead: remoteMain.fullName });
+    const controller = new CompareController(h.deps);
+
+    await controller.initialize();
+
+    expect(h.repositoryPicks).toHaveLength(0);
+    expect(h.compare).toHaveBeenCalledWith('/workspace/repo-1', {
+      repositoryUri: 'file:///workspace/repo-1',
+      baseRef: remoteMain.fullName,
+      compareRef: localFeature.fullName,
+    }, expect.anything());
+  });
+
+  test('shows the repository picker only when more than one repository exists', async () => {
+    const second = repository('repo-2');
+    const h = harness({ repositories: [repository(), second], remoteHead: remoteMain.fullName });
+    h.setNextRepository(second);
+    const controller = new CompareController(h.deps);
+
+    await controller.initialize();
+
+    expect(h.repositoryPicks).toHaveLength(1);
+    expect(h.repositoryPicks[0].map((item) => item.repository.id)).toEqual(['repo-1', 'repo-2']);
+  });
+
+  test('labels local and remote refs in the searchable branch picker', async () => {
+    const h = harness({ remoteHead: remoteMain.fullName });
+    const controller = new CompareController(h.deps);
+    await controller.initialize();
+    h.setNextRef(remoteDevelop);
+
+    await controller.selectBase();
+
+    expect(h.refPicks.at(-1)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: 'feature/x', description: 'Local branch', ref: localFeature }),
+      expect.objectContaining({ label: 'upstream/develop', description: 'Remote branch · upstream', ref: remoteDevelop }),
+    ]));
+  });
+
+  test('falls back from the preferred remote HEAD to remote then local conventional branches', async () => {
+    const h = harness({
+      refs: [localFeature, localMain, remoteDevelop],
+      remoteHead: undefined,
+    });
+    const controller = new CompareController(h.deps);
+
+    await controller.initialize();
+
+    expect(h.adapter.findRemoteHead).toHaveBeenCalledWith('/workspace/repo-1', 'origin', expect.anything());
+    expect(h.compare).toHaveBeenCalledWith('/workspace/repo-1', expect.objectContaining({
+      baseRef: localMain.fullName,
+      compareRef: localFeature.fullName,
+    }), expect.anything());
+  });
+
+  test('never applies an older comparison after a newer selection completes', async () => {
+    const first = deferred<ComparisonResult>();
+    const h = harness({ remoteHead: remoteMain.fullName });
+    h.compare.mockImplementationOnce(async (_root, selection) => first.promise)
+      .mockImplementationOnce(async (_root, selection) => comparison(selection, 'new'));
+    const controller = new CompareController(h.deps);
+    const initializing = controller.initialize();
+    await vi.waitFor(() => expect(h.compare).toHaveBeenCalledTimes(1));
+    h.setNextRef(remoteDevelop);
+
+    await controller.selectBase();
+    first.resolve(comparison(h.compare.mock.calls[0][1], 'old'));
+    await initializing;
+
+    const appliedResults = h.treeInputs
+      .map((input) => (input as { result?: ComparisonResult }).result)
+      .filter(Boolean);
+    expect(appliedResults.at(-1)?.files[0]?.newPath).toBe('new.ts');
+    expect(appliedResults.some((result) => result?.files[0]?.newPath === 'old.ts')).toBe(false);
+  });
+
+  test('refresh never fetches, while fetch updates only selected remotes', async () => {
+    const h = harness({ refs: [localFeature, remoteMain, remoteDevelop], remoteHead: remoteMain.fullName });
+    const controller = new CompareController(h.deps);
+    await controller.initialize();
+    h.setNextRef(remoteDevelop);
+    await controller.selectBase();
+
+    await controller.refresh();
+    expect(h.adapter.fetch).not.toHaveBeenCalled();
+
+    await controller.fetch();
+    expect(h.adapter.fetch.mock.calls.map((call) => call[1])).toEqual(['upstream']);
+  });
+
+  test('fetches the default remote when both selected refs are local', async () => {
+    const localDevelop = { ...localMain, fullName: 'refs/heads/develop', displayName: 'develop' };
+    const h = harness({ refs: [localFeature, localDevelop], remoteHead: undefined });
+    const controller = new CompareController(h.deps);
+    await controller.initialize();
+
+    await controller.fetch();
+
+    expect(h.adapter.fetch).toHaveBeenCalledWith('/workspace/repo-1', 'origin', expect.anything());
+  });
+
+  test('swap exchanges refs, persists the selection, and recomputes', async () => {
+    const h = harness({ remoteHead: remoteMain.fullName });
+    const controller = new CompareController(h.deps);
+    await controller.initialize();
+
+    await controller.swap();
+
+    expect(h.saved.at(-1)).toEqual({
+      repositoryUri: 'file:///workspace/repo-1',
+      baseRef: localFeature.fullName,
+      compareRef: remoteMain.fullName,
+    });
+    expect(h.compare).toHaveBeenLastCalledWith('/workspace/repo-1', h.saved.at(-1), expect.anything());
+  });
+
+  test('keeps the first manual branch choice until the second completes an initially incomplete selection', async () => {
+    const release = { ...localMain, fullName: 'refs/heads/release', displayName: 'release' };
+    const h = harness({
+      repositories: [repository('repo-1', '', [])],
+      refs: [release, localFeature],
+      remoteHead: undefined,
+    });
+    const controller = new CompareController(h.deps);
+
+    await controller.initialize();
+    h.setNextRef(release);
+    await controller.selectBase();
+
+    expect(h.compare).not.toHaveBeenCalled();
+    expect(h.saved).toHaveLength(0);
+
+    h.setNextRef(localFeature);
+    await controller.selectCompare();
+
+    expect(h.saved).toEqual([{
+      repositoryUri: 'file:///workspace/repo-1',
+      baseRef: release.fullName,
+      compareRef: localFeature.fullName,
+    }]);
+    expect(h.compare).toHaveBeenCalledWith('/workspace/repo-1', h.saved[0], expect.anything());
+  });
+
+  test('rejects an open-diff payload from an earlier comparison generation', async () => {
+    const openDiff = vi.fn(async () => undefined);
+    const h = harness({ remoteHead: remoteMain.fullName, openDiff });
+    const controller = new CompareController(h.deps);
+    await controller.initialize();
+    const staleInput = h.treeInputs.at(-1) as { result: ComparisonResult; comparisonGeneration: number };
+    h.setNextRef(remoteDevelop);
+    await controller.selectBase();
+
+    await controller.openDiff(staleInput.result.files[0], staleInput.comparisonGeneration);
+
+    expect(openDiff).not.toHaveBeenCalled();
+  });
+
+  test('invalidates an old diff before awaiting selection persistence', async () => {
+    const openDiff = vi.fn(async () => undefined);
+    const persistence = deferred<void>();
+    const h = harness({ remoteHead: remoteMain.fullName, openDiff });
+    const controller = new CompareController(h.deps);
+    await controller.initialize();
+    const staleInput = h.treeInputs.at(-1) as { result: ComparisonResult; comparisonGeneration: number };
+    h.save.mockImplementationOnce(async () => persistence.promise);
+    h.setNextRef(remoteDevelop);
+
+    const selecting = controller.selectBase();
+    await vi.waitFor(() => expect(h.save).toHaveBeenCalledTimes(2));
+    await controller.openDiff(staleInput.result.files[0], staleInput.comparisonGeneration);
+
+    expect(openDiff).not.toHaveBeenCalled();
+    persistence.resolve(undefined);
+    await selecting;
+  });
+
+  test('clears a closed selected repository without reopening the multi-repository picker', async () => {
+    const first = repository('repo-1');
+    const second = repository('repo-2');
+    const third = repository('repo-3');
+    const openDiff = vi.fn(async () => undefined);
+    const h = harness({ repositories: [first, second, third], remoteHead: remoteMain.fullName, openDiff });
+    h.setNextRepository(first);
+    const controller = new CompareController(h.deps);
+    await controller.initialize();
+    const staleInput = h.treeInputs.at(-1) as { result: ComparisonResult; comparisonGeneration: number };
+
+    h.repositories.splice(0, 1);
+    await controller.repositoriesChanged();
+
+    expect(h.repositoryPicks).toHaveLength(1);
+    expect(h.treeInputs.at(-1)).toMatchObject({
+      repositories: [second, third],
+      repository: undefined,
+      selection: undefined,
+      result: undefined,
+    });
+    await controller.openDiff(staleInput.result.files[0], staleInput.comparisonGeneration);
+    expect(openDiff).not.toHaveBeenCalled();
+  });
+});
+
+describe('toUserFacingError', () => {
+  test('maps domain failures to stable concise messages', () => {
+    expect(toUserFacingError(new MissingRefError('refs/heads/gone')).message)
+      .toBe('The selected branch no longer exists');
+    expect(toUserFacingError(new NoCommonAncestorError('a'.repeat(40), 'b'.repeat(40))).message)
+      .toBe('The branches do not share a common ancestor');
+    expect(toUserFacingError(new Error('secret\u0000details')).message)
+      .toBe('Unable to compare branches');
+  });
+
+  test('redacts credential-key variants from technical output', () => {
+    const text = technicalErrorText(new Error([
+      'client_secret=client-secret-value',
+      'private-token: private-token-value',
+      'refreshToken=refresh-token-value',
+      'api_key="api-key-value"',
+      'X-Api-Key: x-api-key-value',
+    ].join(' ')));
+
+    expect(text).toContain('client_secret=[REDACTED]');
+    expect(text).toContain('private-token: [REDACTED]');
+    expect(text).toContain('refreshToken=[REDACTED]');
+    expect(text).toContain('api_key=[REDACTED]');
+    expect(text).toContain('X-Api-Key: [REDACTED]');
+    expect(text).not.toMatch(/(?:client-secret-value|private-token-value|refresh-token-value|api-key-value|x-api-key-value)/);
+  });
+});
+
+function cancellationSource(): ControllerCancellationTokenSource {
+  let cancelled = false;
+  return {
+    token: {
+      get isCancellationRequested() { return cancelled; },
+      onCancellationRequested: () => ({ dispose() {} }),
+    } as ControllerCancellationTokenSource['token'],
+    cancel() { cancelled = true; },
+    dispose() {},
+  };
+}

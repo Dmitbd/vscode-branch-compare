@@ -1,0 +1,70 @@
+{
+  "name": "branch-compare-viewer",
+  "displayName": "Branch Compare Viewer",
+  "description": "Compare two Git branches in a full, read-only VS Code diff.",
+  "version": "0.1.0",
+  "publisher": "dmitbd",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Dmitbd/vscode-branch-compare.git"
+  },
+  "homepage": "https://github.com/Dmitbd/vscode-branch-compare#readme",
+  "bugs": {
+    "url": "https://github.com/Dmitbd/vscode-branch-compare/issues"
+  },
+  "engines": { "vscode": "^1.96.0" },
+  "categories": ["Source Control"],
+  "activationEvents": ["onView:branchCompare.view"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [{
+        "id": "branchCompare",
+        "title": "Branch Compare",
+        "icon": "resources/branch-compare.svg"
+      }]
+    },
+    "views": {
+      "branchCompare": [{
+        "id": "branchCompare.view",
+        "name": "Branch Compare"
+      }]
+    },
+    "commands": [
+      { "command": "branchCompare.selectRepository", "title": "Branch Compare: Select Repository" },
+      { "command": "branchCompare.selectBase", "title": "Branch Compare: Select Base Branch" },
+      { "command": "branchCompare.selectCompare", "title": "Branch Compare: Select Compare Branch" },
+      { "command": "branchCompare.fetch", "title": "Branch Compare: Fetch", "icon": "$(cloud-download)" },
+      { "command": "branchCompare.refresh", "title": "Branch Compare: Refresh", "icon": "$(refresh)" },
+      { "command": "branchCompare.swap", "title": "Branch Compare: Swap Branches", "icon": "$(arrow-swap)" },
+      { "command": "branchCompare.openDiff", "title": "Branch Compare: Open Full Diff" }
+    ],
+    "menus": {
+      "view/title": [
+        { "command": "branchCompare.fetch", "when": "view == branchCompare.view", "group": "navigation@1" },
+        { "command": "branchCompare.refresh", "when": "view == branchCompare.view", "group": "navigation@2" },
+        { "command": "branchCompare.swap", "when": "view == branchCompare.view", "group": "navigation@3" }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "compile:test:extension": "tsc -p tsconfig.extension-test.json",
+    "test:extension": "npm run build && npm run compile:test:extension && node ./dist-test/runTest.js",
+    "package": "npm run typecheck && npm test && npm run build && vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.96.0",
+    "@vscode/test-electron": "^2.5.0",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}
