@@ -14,6 +14,7 @@ import {
 } from '../../src/controller/compareController';
 import type { ComparisonSelection, DiffTarget } from '../../src/domain/model';
 import { DefaultGitAdapter } from '../../src/git/gitAdapter';
+import { GitCommandRunner } from '../../src/git/commandRunner';
 import type { RepositorySnapshot } from '../../src/repositories/repositoryProvider';
 import type { TreeModelInput } from '../../src/tree/treeModel';
 import { GitRepo } from '../helpers/gitRepo';
@@ -27,7 +28,14 @@ afterEach(async () => {
 describe('read-only workflow invariants', () => {
   test('select, compare, refresh, and diff preparation preserve HEAD, index, and worktree', async () => {
     const repo = await createFeatureRepository();
-    const adapter = new DefaultGitAdapter();
+    const commandRunner = new GitCommandRunner();
+    const gitCommands: string[][] = [];
+    const adapter = new DefaultGitAdapter({
+      async run(cwd, args, token) {
+        gitCommands.push([...args]);
+        return commandRunner.run(cwd, args, token);
+      },
+    });
     const snapshot = await repositorySnapshot(repo, []);
     let selectedDiff: DiffTarget | undefined;
     let comparisonGeneration = 0;
@@ -53,6 +61,12 @@ describe('read-only workflow invariants', () => {
 
     await controller.refresh();
     expect(await invariantSnapshot(repo)).toEqual(before);
+
+    await controller.toggleUnchanged();
+    expect(await invariantSnapshot(repo)).toEqual(before);
+    expect(gitCommands.filter((args) => args[0] === 'ls-tree')).toHaveLength(2);
+    expect(gitCommands.some((args) => args[0] === 'fetch')).toBe(false);
+    expect(gitCommands.some((args) => args[0] === 'checkout' || args[0] === 'switch')).toBe(false);
 
     await adapter.listChangedFiles(repo.root, 'refs/heads/main', 'refs/heads/feature/x');
     expect(await invariantSnapshot(repo)).toEqual(before);

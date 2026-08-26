@@ -1,5 +1,11 @@
 import type { CancellationToken } from 'vscode';
-import type { ComparisonResult, ComparisonSelection, DiffTarget, GitRef } from '../domain/model';
+import type {
+  ComparisonResult,
+  ComparisonSelection,
+  CompleteTreePaths,
+  DiffTarget,
+  GitRef,
+} from '../domain/model';
 import type { GitAdapter } from '../git/gitAdapter';
 import { GitCommandCancelledError } from '../git/commandRunner';
 import type { RepositorySnapshot } from '../repositories/repositoryProvider';
@@ -37,6 +43,11 @@ export interface ControllerDependencies {
   readonly git: Pick<GitAdapter, 'listRefs' | 'findRemoteHead' | 'fetch'>;
   readonly comparisonService: {
     compare(root: string, selection: ComparisonSelection, token?: CancellationToken): Promise<ComparisonResult>;
+    loadCompleteTree(
+      root: string,
+      result: ComparisonResult,
+      token?: CancellationToken,
+    ): Promise<CompleteTreePaths>;
   };
   readonly selectionStore: {
     load(repositoryId: string, validateRef: (ref: string) => boolean): Promise<{
@@ -45,7 +56,7 @@ export interface ControllerDependencies {
     } | undefined>;
     save(repositoryId: string, selection: ComparisonSelection): Promise<void>;
   };
-  readonly tree: { setInput(input: TreeModelInput): void };
+  readonly tree: { setInput(input: ControllerTreeInput): void };
   readonly ui: CompareControllerUi;
   readonly output: { appendLine(value: string): void; show(preserveFocus?: boolean): void };
   readonly createCancellationTokenSource: () => ControllerCancellationTokenSource;
@@ -58,6 +69,10 @@ export interface ControllerDependencies {
   ) => Promise<void>;
 }
 
+export interface ControllerTreeInput extends TreeModelInput {
+  readonly completeTreeError?: UserFacingError;
+}
+
 export class CompareController {
   private repository: RepositorySnapshot | undefined;
   private refs: readonly GitRef[] = [];
@@ -67,6 +82,10 @@ export class CompareController {
   private result: ComparisonResult | undefined;
   private error: UserFacingError | undefined;
   private loading = false;
+  private showUnchanged = false;
+  private completeTree: CompleteTreePaths | undefined;
+  private completeTreeLoading = false;
+  private completeTreeError: UserFacingError | undefined;
   private generation = 0;
   private activeSource: ControllerCancellationTokenSource | undefined;
 
@@ -120,6 +139,7 @@ export class CompareController {
     this.selection = undefined;
     this.result = undefined;
     this.loading = false;
+    this.resetCompleteTreeState();
     this.error = repositories.length === 0 ? new UserFacingError('No repositories found') : undefined;
     this.render();
 
@@ -142,6 +162,61 @@ export class CompareController {
       return;
     }
     await this.recompute(true);
+  }
+
+  public async toggleUnchanged(): Promise<void> {
+    const repository = this.repository;
+    const selection = this.selection;
+    const result = this.result;
+    if (!repository || !selection || !result) {
+      return;
+    }
+
+    if (this.showUnchanged) {
+      this.invalidateOperation();
+      this.showUnchanged = false;
+      this.completeTreeLoading = false;
+      this.render();
+      return;
+    }
+
+    if (this.completeTree) {
+      this.invalidateOperation();
+      this.showUnchanged = true;
+      this.completeTreeError = undefined;
+      this.render();
+      return;
+    }
+
+    const generation = this.startOperation();
+    const source = this.activeSource;
+    this.showUnchanged = true;
+    this.completeTreeLoading = true;
+    this.completeTreeError = undefined;
+    this.render();
+    try {
+      const completeTree = await this.dependencies.comparisonService.loadCompleteTree(
+        repository.rootUri.fsPath,
+        result,
+        source?.token,
+      );
+      if (!this.isCurrentCompleteTree(generation, repository, selection, result)) {
+        return;
+      }
+      this.completeTree = completeTree;
+      this.completeTreeLoading = false;
+      this.render();
+    } catch (error) {
+      if (!this.isCurrentCompleteTree(generation, repository, selection, result) || isCancellation(error)) {
+        return;
+      }
+      this.showUnchanged = false;
+      this.completeTree = undefined;
+      this.completeTreeLoading = false;
+      this.completeTreeError = new UserFacingError('Unable to load all files; try again', error);
+      this.logError(error);
+      this.render();
+    }
   }
 
   public async fetch(): Promise<void> {
@@ -197,6 +272,7 @@ export class CompareController {
     });
     this.baseRef = this.selection.baseRef;
     this.compareRef = this.selection.compareRef;
+    this.resetCompleteTreeState();
     const repository = this.repository;
     const selection = this.selection;
     const generation = this.invalidateOperation();
@@ -268,6 +344,7 @@ export class CompareController {
     this.selection = undefined;
     this.result = undefined;
     this.error = undefined;
+    this.resetCompleteTreeState();
     await this.initializeSelection();
   }
 
@@ -357,6 +434,7 @@ export class CompareController {
     }
     this.baseRef = role === 'BASE' ? picked.fullName : this.baseRef;
     this.compareRef = role === 'COMPARE' ? picked.fullName : this.compareRef;
+    this.resetCompleteTreeState();
     const generation = this.invalidateOperation();
     if (!this.baseRef || !this.compareRef) {
       this.error = new UserFacingError(this.baseRef ? 'Select a compare branch' : 'Select a base branch');
@@ -426,6 +504,9 @@ export class CompareController {
     if (!this.isCurrent(generation, selection, repository)) {
       return;
     }
+    if (!sameResultShas(this.result, result)) {
+      this.resetCompleteTreeState();
+    }
     this.result = result;
     this.loading = false;
     this.error = result.files.length === 0
@@ -443,6 +524,8 @@ export class CompareController {
     if (!this.isCurrent(generation, selection, repository) || isCancellation(error)) {
       return;
     }
+    this.result = undefined;
+    this.resetCompleteTreeState();
     this.loading = false;
     this.error = toUserFacingError(error);
     this.logError(error);
@@ -464,6 +547,10 @@ export class CompareController {
       selection: this.selection,
       result: this.result,
       comparisonGeneration: this.generation,
+      showUnchanged: this.showUnchanged,
+      completeTree: this.completeTree,
+      completeTreeLoading: this.completeTreeLoading,
+      completeTreeError: this.completeTreeError,
       loading: this.loading,
       error: this.error,
     });
@@ -471,6 +558,9 @@ export class CompareController {
 
   private startOperation(): number {
     const generation = this.invalidateOperation();
+    if (this.completeTreeLoading) {
+      this.resetCompleteTreeState();
+    }
     this.activeSource = this.dependencies.createCancellationTokenSource();
     return generation;
   }
@@ -490,6 +580,23 @@ export class CompareController {
     return generation === this.generation
       && repository.id === this.repository?.id
       && (selection === undefined || sameSelection(selection, this.selection));
+  }
+
+  private isCurrentCompleteTree(
+    generation: number,
+    repository: RepositorySnapshot,
+    selection: ComparisonSelection,
+    result: ComparisonResult,
+  ): boolean {
+    return this.isCurrent(generation, selection, repository)
+      && sameResultShas(result, this.result);
+  }
+
+  private resetCompleteTreeState(): void {
+    this.showUnchanged = false;
+    this.completeTree = undefined;
+    this.completeTreeLoading = false;
+    this.completeTreeError = undefined;
   }
 
   private logError(error: unknown): void {
@@ -561,6 +668,17 @@ function sameSelection(left: ComparisonSelection, right: ComparisonSelection | u
     && left.repositoryUri === right.repositoryUri
     && left.baseRef === right.baseRef
     && left.compareRef === right.compareRef;
+}
+
+function sameResultShas(
+  left: ComparisonResult | undefined,
+  right: ComparisonResult | undefined,
+): boolean {
+  return left !== undefined
+    && right !== undefined
+    && left.baseSha === right.baseSha
+    && left.compareSha === right.compareSha
+    && left.mergeBaseSha === right.mergeBaseSha;
 }
 
 function displayRef(ref: string | undefined, refs: readonly GitRef[]): string {

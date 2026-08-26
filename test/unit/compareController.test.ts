@@ -13,7 +13,12 @@ import {
   type RefPickItem,
   type RepositoryPickItem,
 } from '../../src/controller/compareController';
-import type { ComparisonResult, ComparisonSelection, GitRef } from '../../src/domain/model';
+import type {
+  ComparisonResult,
+  ComparisonSelection,
+  CompleteTreePaths,
+  GitRef,
+} from '../../src/domain/model';
 import type { GitAdapter } from '../../src/git/gitAdapter';
 import type { RepositorySnapshot } from '../../src/repositories/repositoryProvider';
 import { MissingRefError, NoCommonAncestorError } from '../../src/compare/comparisonService';
@@ -51,8 +56,14 @@ function comparison(selection: ComparisonSelection, marker = 'result'): Comparis
     compareSha: 'b'.repeat(40),
     mergeBaseSha: marker === 'result' ? 'c'.repeat(40) : 'd'.repeat(40),
     files: [{ status: 'modified', oldPath: `${marker}.ts`, newPath: `${marker}.ts` }],
+    summary: { files: 1, additions: 0, deletions: 0 },
   };
 }
+
+const completeTree: CompleteTreePaths = Object.freeze({
+  mergeBasePaths: Object.freeze(['README.md', 'result.ts']),
+  comparePaths: Object.freeze(['README.md', 'result.ts', 'src/context.ts']),
+});
 
 function deferred<T>(): { promise: Promise<T>; resolve(value: T): void } {
   let resolve!: (value: T) => void;
@@ -81,6 +92,7 @@ function harness(options?: {
     fetch: vi.fn(async () => undefined),
   } as unknown as GitAdapter;
   const compare = vi.fn(async (_root: string, selection: ComparisonSelection) => comparison(selection));
+  const loadCompleteTree = vi.fn(async () => completeTree);
   const save = vi.fn(async (_id: string, selection: ComparisonSelection) => { saved.push(selection); });
   const ui: CompareControllerUi = {
     pickRepository: vi.fn(async (items) => {
@@ -97,7 +109,7 @@ function harness(options?: {
   const deps: ControllerDependencies = {
     repositories: { get repositories() { return repositories; } },
     git: adapter,
-    comparisonService: { compare },
+    comparisonService: { compare, loadCompleteTree },
     selectionStore: {
       load: vi.fn(async () => undefined),
       save,
@@ -109,7 +121,9 @@ function harness(options?: {
     openDiff: options?.openDiff,
   };
   return {
-    adapter, compare, save, deps, refs, repositories, treeInputs, saved, refPicks, repositoryPicks,
+    adapter, compare, loadCompleteTree, save, deps, refs, repositories, treeInputs, saved, refPicks,
+    repositoryPicks,
+    lastInput() { return treeInputs.at(-1) as Record<string, unknown>; },
     setNextRef(value: GitRef | undefined) { nextRef = value; },
     setNextRepository(value: RepositorySnapshot | undefined) { nextRepository = value; },
   };
@@ -207,6 +221,176 @@ describe('CompareController', () => {
     expect(h.adapter.fetch.mock.calls.map((call) => call[1])).toEqual(['upstream']);
   });
 
+  test('loads the complete tree lazily once and reuses it when toggled back on', async () => {
+    const h = harness({ remoteHead: remoteMain.fullName });
+    const controller = new CompareController(h.deps);
+    await controller.initialize();
+    const latestResult = h.lastInput().result as ComparisonResult;
+
+    await controller.toggleUnchanged();
+
+    expect(h.loadCompleteTree).toHaveBeenCalledWith(
+      '/workspace/repo-1',
+      latestResult,
+      expect.anything(),
+    );
+    expect(h.lastInput()).toMatchObject({ showUnchanged: true, completeTree });
+
+    await controller.toggleUnchanged();
+    expect(h.loadCompleteTree).toHaveBeenCalledTimes(1);
+    expect(h.lastInput()).toMatchObject({ showUnchanged: false });
+
+    await controller.toggleUnchanged();
+    expect(h.loadCompleteTree).toHaveBeenCalledTimes(1);
+    expect(h.lastInput()).toMatchObject({ showUnchanged: true, completeTree });
+  });
+
+  test('cancels and ignores complete-tree loading superseded by a branch selection', async () => {
+    const pendingTree = deferred<CompleteTreePaths>();
+    const h = harness({ remoteHead: remoteMain.fullName });
+    h.loadCompleteTree.mockImplementationOnce(async () => pendingTree.promise);
+    const controller = new CompareController(h.deps);
+    await controller.initialize();
+
+    const loadingTree = controller.toggleUnchanged();
+    await vi.waitFor(() => expect(h.loadCompleteTree).toHaveBeenCalledOnce());
+    const treeToken = h.loadCompleteTree.mock.calls[0][2];
+    h.setNextRef(remoteDevelop);
+    await controller.selectBase();
+
+    expect(treeToken?.isCancellationRequested).toBe(true);
+    pendingTree.resolve(completeTree);
+    await loadingTree;
+    expect(h.lastInput()).toMatchObject({
+      showUnchanged: false,
+      completeTree: undefined,
+      selection: { baseRef: remoteDevelop.fullName },
+    });
+  });
+
+  test('keeps the previous comparison visible while a local refresh is loading', async () => {
+    const pendingComparison = deferred<ComparisonResult>();
+    const h = harness({ remoteHead: remoteMain.fullName });
+    const controller = new CompareController(h.deps);
+    await controller.initialize();
+    const previousResult = h.lastInput().result as ComparisonResult;
+    h.compare.mockImplementationOnce(async () => pendingComparison.promise);
+
+    const refreshing = controller.refresh();
+    await vi.waitFor(() => expect(h.compare).toHaveBeenCalledTimes(2));
+
+    expect(h.lastInput()).toMatchObject({ loading: true, result: previousResult });
+    pendingComparison.resolve(previousResult);
+    await refreshing;
+  });
+
+  test('does not leave complete-tree loading stuck when local refresh supersedes it', async () => {
+    const pendingTree = deferred<CompleteTreePaths>();
+    const h = harness({ remoteHead: remoteMain.fullName });
+    h.loadCompleteTree.mockImplementationOnce(async () => pendingTree.promise);
+    const controller = new CompareController(h.deps);
+    await controller.initialize();
+
+    const loadingTree = controller.toggleUnchanged();
+    await vi.waitFor(() => expect(h.loadCompleteTree).toHaveBeenCalledOnce());
+    await controller.refresh();
+
+    expect(h.lastInput()).toMatchObject({
+      showUnchanged: false,
+      completeTree: undefined,
+      completeTreeLoading: false,
+      loading: false,
+    });
+    pendingTree.resolve(completeTree);
+    await loadingTree;
+    expect(h.lastInput()).toMatchObject({ showUnchanged: false, completeTree: undefined });
+  });
+
+  test('preserves a loaded complete tree only when local refresh resolves to identical SHAs', async () => {
+    const h = harness({ remoteHead: remoteMain.fullName });
+    const controller = new CompareController(h.deps);
+    await controller.initialize();
+    await controller.toggleUnchanged();
+
+    await controller.refresh();
+
+    expect(h.loadCompleteTree).toHaveBeenCalledTimes(1);
+    expect(h.lastInput()).toMatchObject({ showUnchanged: true, completeTree });
+
+    h.compare.mockImplementationOnce(async (_root, selection) => comparison(selection, 'new'));
+    await controller.refresh();
+
+    expect(h.lastInput()).toMatchObject({ showUnchanged: false, completeTree: undefined });
+  });
+
+  test('clears stale comparison and complete-tree state after a final comparison error', async () => {
+    const h = harness({ remoteHead: remoteMain.fullName });
+    const controller = new CompareController(h.deps);
+    await controller.initialize();
+    await controller.toggleUnchanged();
+    h.compare.mockRejectedValueOnce(new Error('comparison exploded'));
+
+    await controller.refresh();
+
+    expect(h.lastInput()).toMatchObject({
+      result: undefined,
+      completeTree: undefined,
+      showUnchanged: false,
+      completeTreeLoading: false,
+      loading: false,
+      error: expect.objectContaining({ message: 'Unable to compare branches' }),
+    });
+  });
+
+  test('falls back to changed rows with a concise retryable complete-tree error', async () => {
+    const h = harness({ remoteHead: remoteMain.fullName });
+    h.loadCompleteTree.mockRejectedValueOnce(new Error('ls-tree exploded'));
+    const controller = new CompareController(h.deps);
+    await controller.initialize();
+    const latestResult = h.lastInput().result;
+
+    await controller.toggleUnchanged();
+
+    expect(h.lastInput()).toMatchObject({
+      result: latestResult,
+      showUnchanged: false,
+      completeTree: undefined,
+      completeTreeLoading: false,
+      completeTreeError: expect.objectContaining({
+        message: 'Unable to load all files; try again',
+      }),
+    });
+    expect(h.deps.output.appendLine).toHaveBeenCalledWith(expect.stringContaining('ls-tree exploded'));
+
+    await controller.toggleUnchanged();
+    expect(h.loadCompleteTree).toHaveBeenCalledTimes(2);
+    expect(h.lastInput()).toMatchObject({
+      showUnchanged: true,
+      completeTree,
+      completeTreeError: undefined,
+    });
+  });
+
+  test('keeps the previous comparison visible when fetch fails before recomputation', async () => {
+    const h = harness({ remoteHead: remoteMain.fullName });
+    const controller = new CompareController(h.deps);
+    await controller.initialize();
+    const previousResult = h.lastInput().result;
+    h.adapter.fetch.mockRejectedValueOnce(new Error('network unavailable'));
+
+    await controller.fetch();
+
+    expect(h.lastInput()).toMatchObject({
+      result: previousResult,
+      loading: false,
+      error: undefined,
+    });
+    expect(h.deps.ui.showError).toHaveBeenCalledWith(
+      'Fetch failed; the previous comparison is still shown',
+      'Show Output',
+    );
+  });
+
   test('fetches the default remote when both selected refs are local', async () => {
     const localDevelop = { ...localMain, fullName: 'refs/heads/develop', displayName: 'develop' };
     const h = harness({ refs: [localFeature, localDevelop], remoteHead: undefined });
@@ -222,6 +406,7 @@ describe('CompareController', () => {
     const h = harness({ remoteHead: remoteMain.fullName });
     const controller = new CompareController(h.deps);
     await controller.initialize();
+    await controller.toggleUnchanged();
 
     await controller.swap();
 
@@ -231,6 +416,7 @@ describe('CompareController', () => {
       compareRef: remoteMain.fullName,
     });
     expect(h.compare).toHaveBeenLastCalledWith('/workspace/repo-1', h.saved.at(-1), expect.anything());
+    expect(h.lastInput()).toMatchObject({ showUnchanged: false, completeTree: undefined });
   });
 
   test('keeps the first manual branch choice until the second completes an initially incomplete selection', async () => {
@@ -318,13 +504,17 @@ describe('CompareController', () => {
     expect(openDiff).not.toHaveBeenCalled();
   });
 
-  test('opens an unchanged target from the current comparison generation', async () => {
+  test('opens an unchanged target only from the current comparison generation', async () => {
     const openDiff = vi.fn(async () => undefined);
     const h = harness({ remoteHead: remoteMain.fullName, openDiff });
     const controller = new CompareController(h.deps);
     await controller.initialize();
+    await controller.toggleUnchanged();
     const currentInput = h.treeInputs.at(-1) as { result: ComparisonResult; comparisonGeneration: number };
     const target = { kind: 'unchanged' as const, path: 'src/context.ts' };
+
+    await controller.openDiff(target, currentInput.comparisonGeneration - 1);
+    expect(openDiff).not.toHaveBeenCalled();
 
     await controller.openDiff(target, currentInput.comparisonGeneration);
 
