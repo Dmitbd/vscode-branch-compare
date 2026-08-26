@@ -13,6 +13,9 @@ describe('createWebviewDocument', () => {
     expect(html).toContain('vscode-resource:');
     expect(html).not.toContain("'unsafe-inline'");
     expect(html).not.toContain("'unsafe-eval'");
+    expect(html).not.toContain('row.style.setProperty');
+    expect(html).toContain("row.className = 'tree-row tree-level-'");
+    expect(html).toContain('.tree-level-20 { padding-left: 246px; }');
     expect(html).toContain('BASE');
     expect(html).toContain('COMPARE');
     expect(html).toContain('CHANGED FILES');

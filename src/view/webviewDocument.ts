@@ -6,6 +6,7 @@ export interface WebviewDocumentOptions {
 export function createWebviewDocument(options: WebviewDocumentOptions): string {
   const cspSource = escapeAttribute(options.cspSource);
   const nonce = escapeAttribute(options.nonce);
+  const treeIndentationRules = createTreeIndentationRules();
   return `<!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -195,12 +196,14 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
       width: 100%;
       min-height: 24px;
       align-items: center;
-      padding: 0 6px 0 calc(6px + var(--tree-level) * 12px);
+      padding: 0 6px;
       border: 0;
       background: transparent;
       text-align: left;
       cursor: pointer;
     }
+
+    ${treeIndentationRules}
 
     .tree-row:hover { background: var(--vscode-list-hoverBackground); }
     .tree-row:focus { background: var(--vscode-list-focusBackground, var(--vscode-list-activeSelectionBackground)); }
@@ -563,8 +566,7 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
     function createRow(node, level, parentPath) {
       const row = document.createElement('button');
       row.type = 'button';
-      row.className = 'tree-row';
-      row.style.setProperty('--tree-level', String(level - 1));
+      row.className = 'tree-row tree-level-' + String(Math.min(level - 1, 20));
       row.dataset.path = node.path;
       row.dataset.parentPath = parentPath;
       row.setAttribute('role', 'treeitem');
@@ -781,6 +783,12 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
   </script>
 </body>
 </html>`;
+}
+
+function createTreeIndentationRules(): string {
+  return Array.from({ length: 21 }, (_, level) => (
+    `.tree-level-${level} { padding-left: ${6 + level * 12}px; }`
+  )).join('\n    ');
 }
 
 function escapeAttribute(value: string): string {
