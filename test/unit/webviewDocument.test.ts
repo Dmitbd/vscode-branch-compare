@@ -31,7 +31,7 @@ describe('createWebviewDocument', () => {
     expect(html).toContain('var(--vscode-gitDecoration-addedResourceForeground)');
     expect(html).toContain('var(--vscode-gitDecoration-modifiedResourceForeground)');
     expect(html).toContain('var(--vscode-gitDecoration-deletedResourceForeground)');
-    expect(html).toContain('--metric-columns: minmax(0, 1fr) repeat(3, 5ch) 6ch 6ch');
+    expect(html).toContain('--metric-columns: minmax(0, 1fr) repeat(3, 6ch) 6ch 6ch');
     expect(html).toMatch(/\.metric-head,\s*\.tree-row\s*{[^}]*grid-template-columns: var\(--metric-columns\)/s);
     expect(html).toContain('fill="currentColor"');
     expect(html).toContain('title="Added"');
@@ -64,6 +64,15 @@ describe('createWebviewDocument', () => {
     expect(html).not.toContain('text-overflow: clip');
   });
 
+  test('formats non-zero folder counters with status-specific signs and hides zeroes', () => {
+    const html = createWebviewDocument({ cspSource: 'test:', nonce: 'nonce' });
+
+    expect(html).toContain("appendMetric(row, formatFolderMetric(counts.added, '+'), 'status-added', 'Added')");
+    expect(html).toContain("appendMetric(row, formatFolderMetric(counts.modified, ''), 'status-modified', 'Modified')");
+    expect(html).toContain("appendMetric(row, formatFolderMetric(counts.deleted, '−'), 'status-deleted', 'Deleted')");
+    expect(html).toMatch(/function formatFolderMetric\(value, sign\) \{\s*if \(!value \|\| value === '0'\) \{\s*return '';\s*\}\s*return sign \+ String\(value\);\s*\}/);
+  });
+
   test('defers one-time default expansion until the first completed non-empty tree', () => {
     const html = createWebviewDocument({ cspSource: 'test:', nonce: 'nonce' });
 
@@ -87,5 +96,22 @@ describe('createWebviewDocument', () => {
     expect(html).toContain("event.key === 'Enter'");
     expect(html).toContain('const expandedPaths = new Set()');
     expect(html).toContain('expandedPaths.clear()');
+  });
+
+  test('keeps collapse-all local and toggles expansion state symmetrically', () => {
+    const html = createWebviewDocument({ cspSource: 'test:', nonce: 'nonce' });
+    const collapseHandler = html.match(
+      /getElementById\('collapse-all'\)\.addEventListener\('click', function \(\) \{([\s\S]*?)\n    \}\);/,
+    )?.[1];
+    const toggleFunction = html.match(
+      /function toggleFolder\(path\) \{([\s\S]*?)\n    \}\n\n    function collectFolderPaths/,
+    )?.[1];
+
+    expect(collapseHandler).toContain('expandedPaths.clear()');
+    expect(collapseHandler).toContain('renderTree()');
+    expect(collapseHandler).not.toContain('vscode.postMessage');
+    expect(toggleFunction).toContain('expandedPaths.delete(path)');
+    expect(toggleFunction).toContain('expandedPaths.add(path)');
+    expect(toggleFunction).toContain('renderTree(path)');
   });
 });

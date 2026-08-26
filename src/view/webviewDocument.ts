@@ -15,7 +15,7 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
   <style nonce="${nonce}">
     :root {
       color-scheme: light dark;
-      --metric-columns: minmax(0, 1fr) repeat(3, 5ch) 6ch 6ch;
+      --metric-columns: minmax(0, 1fr) repeat(3, 6ch) 6ch 6ch;
     }
 
     * { box-sizing: border-box; }
@@ -437,15 +437,22 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
     }
 
     function appendStatusMetrics(row, counts) {
-      appendMetric(row, String(counts.added), 'status-added', 'Added');
-      appendMetric(row, String(counts.modified), 'status-modified', 'Modified');
-      appendMetric(row, String(counts.deleted), 'status-deleted', 'Deleted');
+      appendMetric(row, formatFolderMetric(counts.added, '+'), 'status-added', 'Added');
+      appendMetric(row, formatFolderMetric(counts.modified, ''), 'status-modified', 'Modified');
+      appendMetric(row, formatFolderMetric(counts.deleted, '−'), 'status-deleted', 'Deleted');
     }
 
     function appendFileStatusMetrics(row, status) {
       appendMetric(row, status === 'added' ? '●' : '', 'status-added', status === 'added' ? 'Added' : '');
       appendMetric(row, status === 'modified' ? '●' : '', 'status-modified', status === 'modified' ? 'Modified' : '');
       appendMetric(row, status === 'deleted' ? '●' : '', 'status-deleted', status === 'deleted' ? 'Deleted' : '');
+    }
+
+    function formatFolderMetric(value, sign) {
+      if (!value || value === '0') {
+        return '';
+      }
+      return sign + String(value);
     }
 
     function formatLineMetric(value, sign) {
