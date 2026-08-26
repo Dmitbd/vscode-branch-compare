@@ -15,7 +15,7 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
   <style nonce="${nonce}">
     :root {
       color-scheme: light dark;
-      --metric-columns: minmax(0, 1fr) repeat(3, 3ch) 5ch 5ch;
+      --metric-columns: minmax(0, 1fr) repeat(3, 5ch) 6ch 6ch;
     }
 
     * { box-sizing: border-box; }
@@ -65,9 +65,17 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
       text-transform: uppercase;
     }
 
+    .section-title {
+      margin: 0;
+      color: var(--vscode-foreground);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+    }
+
     .branch-grid {
       display: grid;
-      grid-template-columns: 7ch minmax(0, 1fr);
+      grid-template-columns: 8ch max-content minmax(0, 1fr);
       align-items: center;
       column-gap: 4px;
     }
@@ -79,6 +87,8 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
       letter-spacing: 0.04em;
     }
 
+    .branch-colon { color: var(--vscode-descriptionForeground); }
+
     .direction {
       grid-column: 1 / -1;
       justify-self: center;
@@ -88,7 +98,7 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
     }
 
     .summary {
-      grid-column: 2;
+      grid-column: 3;
       min-height: 16px;
       padding: 0 4px;
       color: var(--vscode-descriptionForeground);
@@ -134,7 +144,7 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
     .metric-head,
     .tree-row {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) repeat(3, 3ch) 5ch 5ch;
+      grid-template-columns: var(--metric-columns);
       align-items: center;
     }
 
@@ -193,10 +203,7 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
     .tree-row[aria-expanded='true'] .folder-label::before { transform: rotate(90deg); }
 
     .metric {
-      min-width: 0;
-      overflow: hidden;
       text-align: right;
-      text-overflow: clip;
       white-space: nowrap;
       font-variant-numeric: tabular-nums;
     }
@@ -209,13 +216,16 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
   </style>
 </head>
 <body>
-  <section class="selection" aria-label="Branch comparison">
+  <section class="selection" aria-labelledby="branches-title">
+    <h2 class="section-title" id="branches-title">BRANCHES</h2>
     <button class="repository-button" id="select-repository" type="button" aria-label="выбрать репозиторий">REPOSITORY</button>
     <div class="branch-grid">
-      <span class="branch-label">BASE&nbsp;&nbsp;:</span>
+      <span class="branch-label">BASE</span>
+      <span class="branch-colon" aria-hidden="true">:</span>
       <button class="branch-button" id="select-base" type="button" aria-label="выбрать базовую ветку"></button>
       <span class="direction" aria-hidden="true">↑</span>
-      <span class="branch-label">COMPARE&nbsp;&nbsp;:</span>
+      <span class="branch-label">COMPARE</span>
+      <span class="branch-colon" aria-hidden="true">:</span>
       <button class="branch-button" id="select-compare" type="button" aria-label="выбрать сравниваемую ветку"></button>
       <div class="summary" id="summary" aria-live="polite"></div>
     </div>
@@ -281,7 +291,7 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
       renderSummary();
       renderFilter();
       renderMessages();
-      if (!hasInitialExpansion) {
+      if (!hasInitialExpansion && !currentModel.loading && !currentModel.completeTreeLoading && currentModel.nodes.length > 0) {
         collectFolderPaths(currentModel.nodes, expandedPaths);
         hasInitialExpansion = true;
       }
@@ -389,8 +399,8 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
       const row = createRow(node, level, parentPath);
       row.append(createLabel(node.label, false));
       appendFileStatusMetrics(row, node.status);
-      appendMetric(row, node.additions || '', 'addition');
-      appendMetric(row, node.deletions || '', 'deletion');
+      appendMetric(row, formatLineMetric(node.additions, '+'), lineMetricClass(node.additions, 'addition'));
+      appendMetric(row, formatLineMetric(node.deletions, '−'), lineMetricClass(node.deletions, 'deletion'));
       const open = function () {
         vscode.postMessage({ type: 'open-diff', nodeId: node.id, generation: node.generation });
       };
@@ -436,6 +446,17 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
       appendMetric(row, status === 'added' ? '●' : '', 'status-added', status === 'added' ? 'Added' : '');
       appendMetric(row, status === 'modified' ? '●' : '', 'status-modified', status === 'modified' ? 'Modified' : '');
       appendMetric(row, status === 'deleted' ? '●' : '', 'status-deleted', status === 'deleted' ? 'Deleted' : '');
+    }
+
+    function formatLineMetric(value, sign) {
+      if (!value || value === '0') {
+        return '';
+      }
+      return value === '—' ? '—' : sign + value;
+    }
+
+    function lineMetricClass(value, className) {
+      return !value || value === '0' || value === '—' ? '' : className;
     }
 
     function appendMetric(row, value, className, title) {
