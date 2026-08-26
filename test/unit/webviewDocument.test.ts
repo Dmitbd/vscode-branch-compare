@@ -156,17 +156,25 @@ describe('createWebviewDocument', () => {
     const counts = { added: 1, modified: 0, deleted: 0 };
     const validFolder = formatters.folderAriaLabel({ label: '\\u{85}', counts }, false);
     const invalidFolder = formatters.folderAriaLabel({ label: '\\x85', counts }, false);
-    const validFile = '\\u{85}, ' + formatters.statusName('modified') + ', '
-      + formatters.fileAriaLabel({ additions: '1', deletions: '0' });
-    const invalidFile = '\\x85, ' + formatters.statusName('modified') + ', '
-      + formatters.fileAriaLabel({ additions: '1', deletions: '0' });
+    const validFile = formatters.fileAriaLabel({
+      label: '\\u{85}', status: 'modified', additions: '1', deletions: '0', binary: false, previewable: true,
+    });
+    const invalidFile = formatters.fileAriaLabel({
+      label: '\\x85', status: 'modified', additions: '1', deletions: '0', binary: false, previewable: true,
+    });
 
     expect(validFolder).toContain('\\u{85}, folder');
     expect(invalidFolder).toContain('\\x85, folder');
     expect(validFolder).not.toBe(invalidFolder);
-    expect(validFile).toContain('\\u{85}, Modified');
-    expect(invalidFile).toContain('\\x85, Modified');
+    expect(validFile).toBe('\\u{85}, Modified, added lines 1, deleted lines 0');
+    expect(invalidFile).toBe('\\x85, Modified, added lines 1, deleted lines 0');
     expect(validFile).not.toBe(invalidFile);
+    expect(formatters.fileAriaLabel({
+      label: 'asset.bin', status: 'modified', binary: true, previewable: true,
+    })).toBe('asset.bin, Modified, Line changes unavailable');
+    expect(formatters.fileAriaLabel({
+      label: 'vendor', status: 'modified', binary: true, previewable: false,
+    })).toBe('vendor, Modified, Submodule changes cannot be previewed');
   });
 
   test('places a status marker and file icon on the left and line metrics on the right', () => {
@@ -183,7 +191,7 @@ describe('createWebviewDocument', () => {
     expect(html).toContain("createIcon('file', 'tree-icon')");
     expect(html).toContain("marker.title = statusName(status)");
     expect(html).toContain("metric.title = title");
-    expect(html).toContain("node.binary ? 'Line changes unavailable' : fileAriaLabel(node)");
+    expect(fileRenderer).toContain("row.setAttribute('aria-label', fileAriaLabel(node))");
   });
 
   test('keeps collapse-all local and toggles expansion state symmetrically', () => {

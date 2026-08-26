@@ -541,9 +541,7 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
         appendMetric(row, formatLineMetric(node.additions, '+'), lineMetricClass(node.additions, 'addition'), 'Added', lineAriaLabel(node.additions, 'added'));
         appendMetric(row, formatLineMetric(node.deletions, '−'), lineMetricClass(node.deletions, 'deletion'), 'Deleted', lineAriaLabel(node.deletions, 'deleted'));
       }
-      const details = node.binary ? 'Line changes unavailable' : fileAriaLabel(node);
-      const previewDetails = node.previewable === false ? 'Submodule changes cannot be previewed' : details;
-      row.setAttribute('aria-label', node.label + ', ' + statusName(node.status) + ', ' + previewDetails);
+      row.setAttribute('aria-label', fileAriaLabel(node));
       if (node.previewable === false) {
         row.setAttribute('aria-disabled', 'true');
         row.title = 'Submodule changes cannot be previewed';
@@ -691,7 +689,12 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
     }
 
     function fileAriaLabel(node) {
-      return 'added lines ' + (node.additions || '0') + ', deleted lines ' + (node.deletions || '0');
+      const details = node.previewable === false
+        ? 'Submodule changes cannot be previewed'
+        : node.binary
+          ? 'Line changes unavailable'
+          : 'added lines ' + (node.additions || '0') + ', deleted lines ' + (node.deletions || '0');
+      return node.label + ', ' + statusName(node.status) + ', ' + details;
     }
 
     function statusName(status) {
