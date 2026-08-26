@@ -51,7 +51,7 @@ function deferred<T>() {
 }
 
 describe('ComparisonService', () => {
-  test('loads sorted deeply immutable paths from both complete commit trees', async () => {
+  test('loads sorted deeply immutable paths without changing raw Unicode identity', async () => {
     const adapter = createAdapter();
     const token = { isCancellationRequested: false } as CancellationToken;
     const result: ComparisonResult = {
@@ -71,7 +71,7 @@ describe('ComparisonService', () => {
     expect(adapter.listTreePaths).toHaveBeenNthCalledWith(1, root, mergeBaseSha, token);
     expect(adapter.listTreePaths).toHaveBeenNthCalledWith(2, root, compareSha, token);
     expect(trees).toEqual({
-      mergeBasePaths: ['éclair.txt', 'z2.txt', 'z10.txt'],
+      mergeBasePaths: ['e\u0301clair.txt', 'z2.txt', 'z10.txt'],
       comparePaths: ['README.md', 'src/z2.ts', 'src/z10.ts'],
     });
     expect(Object.isFrozen(trees)).toBe(true);
@@ -80,7 +80,7 @@ describe('ComparisonService', () => {
     expect(() => (trees.mergeBasePaths as string[]).push('other.txt')).toThrow();
   });
 
-  test('rejects duplicate paths after NFC normalization', async () => {
+  test('keeps canonically equivalent Git paths as two distinct tree entries', async () => {
     const adapter = createAdapter();
     const result: ComparisonResult = {
       selection,
@@ -94,8 +94,10 @@ describe('ComparisonService', () => {
       .mockResolvedValueOnce(['e\u0301clair.txt', 'éclair.txt'])
       .mockResolvedValueOnce([]);
 
-    await expect(new ComparisonService(adapter).loadCompleteTree(root, result))
-      .rejects.toThrow('Duplicate normalized tree path');
+    await expect(new ComparisonService(adapter).loadCompleteTree(root, result)).resolves.toEqual({
+      mergeBasePaths: ['e\u0301clair.txt', 'éclair.txt'],
+      comparePaths: [],
+    });
   });
 
   test('resolves refs in order and lists only merge-base to compare changes', async () => {

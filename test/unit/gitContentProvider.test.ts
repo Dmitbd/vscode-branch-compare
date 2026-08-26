@@ -243,4 +243,14 @@ describe('openFullDiff', () => {
       empty: false,
     });
   });
+
+  test('preserves a decomposed Unicode Git path on both unchanged diff sides', async () => {
+    const path = 'src/e\u0301clair.ts';
+
+    await openFullDiff(repositoryId, result, { kind: 'unchanged', path }, 'origin/main', 'feature/x');
+
+    const [, leftUri, rightUri] = vi.mocked(commands.executeCommand).mock.calls[0];
+    expect(parseVirtualUri(leftUri as never).path).toBe(path);
+    expect(parseVirtualUri(rightUri as never).path).toBe(path);
+  });
 });

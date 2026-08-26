@@ -129,7 +129,7 @@ function createChangedNodes(
 ): Map<string, ViewFileNode> {
   const nodes = new Map<string, ViewFileNode>();
   for (const sourceFile of files) {
-    const path = normalizedDisplayPath(sourceFile);
+    const path = displayPath(sourceFile);
     const file = immutableChangedFile(sourceFile);
     const status = presentationStatus(file);
     const binary = file.lineChanges?.additions === null || file.lineChanges?.deletions === null;
@@ -157,8 +157,8 @@ function addUnchangedNodes(
   generation: number,
 ): void {
   const completePaths = new Set([
-    ...completeTree.mergeBasePaths.map(normalizedPath),
-    ...completeTree.comparePaths.map(normalizedPath),
+    ...completeTree.mergeBasePaths,
+    ...completeTree.comparePaths,
   ]);
   for (const path of completePaths) {
     if (nodes.has(path) || excludedPaths.has(path)) {
@@ -184,10 +184,10 @@ function changedPaths(files: readonly ChangedFile[]): ReadonlySet<string> {
   const paths = new Set<string>();
   for (const file of files) {
     if (file.oldPath) {
-      paths.add(normalizedPath(file.oldPath));
+      paths.add(file.oldPath);
     }
     if (file.newPath) {
-      paths.add(normalizedPath(file.newPath));
+      paths.add(file.newPath);
     }
   }
   return paths;
@@ -272,16 +272,12 @@ function immutableChangedFile(file: ChangedFile): ChangedFile {
   });
 }
 
-function normalizedDisplayPath(file: ChangedFile): string {
+function displayPath(file: ChangedFile): string {
   const path = file.newPath ?? file.oldPath;
   if (!path) {
     throw new TypeError('Changed file must have an old or new path.');
   }
-  return normalizedPath(path);
-}
-
-function normalizedPath(path: string): string {
-  return path.normalize('NFC');
+  return path;
 }
 
 function presentationStatus(file: ChangedFile): ViewFileNode['status'] {
@@ -313,6 +309,9 @@ function errorMessage(error: Error): string {
 }
 
 function compareLabels(left: string, right: string): number {
-  const displayOrder = displayPathCollator.compare(left, right);
+  const displayOrder = displayPathCollator.compare(
+    left.normalize('NFC'),
+    right.normalize('NFC'),
+  );
   return displayOrder || (left < right ? -1 : left > right ? 1 : 0);
 }

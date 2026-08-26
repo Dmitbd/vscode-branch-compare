@@ -160,33 +160,38 @@ function throwIfCancelled(token?: CancellationToken): void {
 }
 
 function compareChangedFiles(left: ChangedFile, right: ChangedFile): number {
-  const leftPath = normalizedDisplayPath(left);
-  const rightPath = normalizedDisplayPath(right);
-  const displayOrder = displayPathCollator.compare(leftPath, rightPath);
+  const leftPath = displayPath(left);
+  const rightPath = displayPath(right);
+  const displayOrder = displayPathCollator.compare(
+    leftPath.normalize('NFC'),
+    rightPath.normalize('NFC'),
+  );
   if (displayOrder !== 0) {
     return displayOrder;
   }
   return leftPath < rightPath ? -1 : leftPath > rightPath ? 1 : 0;
 }
 
-function normalizedDisplayPath(file: ChangedFile): string {
+function displayPath(file: ChangedFile): string {
   const displayPath = file.newPath ?? file.oldPath;
   if (displayPath === undefined) {
     throw new TypeError('Changed file must have an old or new path.');
   }
-  return displayPath.normalize('NFC');
+  return displayPath;
 }
 
 function freezeSortedPaths(paths: readonly string[]): readonly string[] {
-  const normalizedPaths = paths.map((path) => path.normalize('NFC'));
-  if (new Set(normalizedPaths).size !== normalizedPaths.length) {
-    throw new TypeError('Duplicate normalized tree path.');
+  if (new Set(paths).size !== paths.length) {
+    throw new TypeError('Duplicate tree path.');
   }
-  return Object.freeze(normalizedPaths.sort(comparePaths));
+  return Object.freeze([...paths].sort(comparePaths));
 }
 
 function comparePaths(left: string, right: string): number {
-  const displayOrder = displayPathCollator.compare(left, right);
+  const displayOrder = displayPathCollator.compare(
+    left.normalize('NFC'),
+    right.normalize('NFC'),
+  );
   if (displayOrder !== 0) {
     return displayOrder;
   }

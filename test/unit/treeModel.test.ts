@@ -153,6 +153,45 @@ describe('buildTreeModel', () => {
     expect(nodes.find((node) => node.path === 'src/removed.ts')?.status).toBe('deleted');
   });
 
+  test('keeps canonically equivalent raw Git paths as distinct unchanged diff targets', () => {
+    const decomposed = 'src/e\u0301clair.ts';
+    const composed = 'src/éclair.ts';
+    const completeTree: CompleteTreePaths = {
+      mergeBasePaths: [decomposed, composed],
+      comparePaths: [decomposed, composed],
+    };
+
+    const model = buildTreeModel(modelInput([], { showUnchanged: true, completeTree }));
+    const nodes = flatten(model.nodes);
+
+    expect(nodes).toHaveLength(2);
+    expect(nodes.map((node) => node.path)).toEqual([decomposed, composed]);
+    expect(nodes.map((node) => node.id)).toEqual([
+      `unchanged:${decomposed}`,
+      `unchanged:${composed}`,
+    ]);
+    expect(nodes.map((node) => node.target)).toEqual([
+      { kind: 'unchanged', path: decomposed },
+      { kind: 'unchanged', path: composed },
+    ]);
+  });
+
+  test('keeps canonically equivalent changed paths as distinct files', () => {
+    const decomposed = 'src/e\u0301clair.ts';
+    const composed = 'src/éclair.ts';
+
+    const nodes = flatten(buildTreeModel(modelInput([
+      changed('added', undefined, decomposed, 1, 0),
+      changed('added', undefined, composed, 2, 0),
+    ])).nodes);
+
+    expect(nodes.map((node) => node.path)).toEqual([decomposed, composed]);
+    expect(nodes.map((node) => node.target)).toEqual([
+      expect.objectContaining({ kind: 'changed', file: expect.objectContaining({ newPath: decomposed }) }),
+      expect.objectContaining({ kind: 'changed', file: expect.objectContaining({ newPath: composed }) }),
+    ]);
+  });
+
   test('shows a renamed file once by its new path in the complete-tree union', () => {
     const completeTree: CompleteTreePaths = {
       mergeBasePaths: ['README.md', 'src/old.ts'],

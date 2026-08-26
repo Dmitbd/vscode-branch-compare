@@ -55,6 +55,7 @@ describe('virtual Git document URI', () => {
     'src/file with spaces and 100%.ts',
     'папка/файл-🚀.ts',
     'docs/topic#section?.md',
+    'src/e\u0301clair.ts',
   ])('round-trips a safe reference for path %s', (path) => {
     const ref: VirtualDocumentRef = { repositoryId, commit, path, empty: false };
 
