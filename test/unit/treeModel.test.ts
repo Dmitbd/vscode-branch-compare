@@ -153,6 +153,25 @@ describe('buildTreeModel', () => {
     expect(nodes.find((node) => node.path === 'src/removed.ts')?.status).toBe('deleted');
   });
 
+  test('shows a renamed file once by its new path in the complete-tree union', () => {
+    const completeTree: CompleteTreePaths = {
+      mergeBasePaths: ['README.md', 'src/old.ts'],
+      comparePaths: ['README.md', 'src/renamed.ts'],
+    };
+
+    const model = buildTreeModel(modelInput([
+      changed('renamed', 'src/old.ts', 'src/renamed.ts', 1, 1),
+    ], { showUnchanged: true, completeTree }));
+    const nodes = flatten(model.nodes);
+
+    expect(nodes.map((node) => node.path).sort()).toEqual(['README.md', 'src/renamed.ts']);
+    expect(nodes.find((node) => node.path === 'src/renamed.ts')).toMatchObject({
+      status: 'modified',
+      target: { kind: 'changed', file: { status: 'renamed' } },
+    });
+    expect(nodes.find((node) => node.path === 'src/old.ts')).toBeUndefined();
+  });
+
   test('keeps deleted files visible without a complete tree', () => {
     const model = buildTreeModel(modelInput([
       changed('deleted', 'src/removed.ts', undefined, 0, 8),
@@ -182,6 +201,17 @@ describe('buildTreeModel', () => {
 
     expect(model).toMatchObject({
       error: 'Git failed', canRetry: true, loading: false, nodes: [],
+    });
+    expect(model.summary).toBeUndefined();
+  });
+
+  test('a final error discards nodes and summary from a previous result', () => {
+    const model = buildTreeModel(modelInput([
+      changed('modified', 'src/edit.ts', 'src/edit.ts', 3, 4),
+    ], { error: new Error('Refresh failed') }));
+
+    expect(model).toMatchObject({
+      error: 'Refresh failed', canRetry: true, nodes: [],
     });
     expect(model.summary).toBeUndefined();
   });

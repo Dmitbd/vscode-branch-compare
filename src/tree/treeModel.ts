@@ -88,16 +88,16 @@ export function formatMetric(value: number): string {
 
 export function buildTreeModel(input: TreeModelInput): CompareViewModel {
   const selection = input.selection;
-  const result = input.result;
+  const error = input.error ? errorMessage(input.error) : undefined;
+  const result = error ? undefined : input.result;
   const showUnchanged = input.showUnchanged ?? false;
   const generation = input.comparisonGeneration ?? 0;
   const fileNodes = result ? createChangedNodes(result.files, generation) : new Map<string, ViewFileNode>();
 
-  if (showUnchanged && input.completeTree) {
-    addUnchangedNodes(fileNodes, input.completeTree, generation);
+  if (result && showUnchanged && input.completeTree) {
+    addUnchangedNodes(fileNodes, changedPaths(result.files), input.completeTree, generation);
   }
 
-  const error = input.error ? errorMessage(input.error) : undefined;
   const model: CompareViewModel = {
     branches: Object.freeze({
       base: displayRef(selection?.baseRef ?? input.baseRef, input.refs),
@@ -144,6 +144,7 @@ function createChangedNodes(
 
 function addUnchangedNodes(
   nodes: Map<string, ViewFileNode>,
+  excludedPaths: ReadonlySet<string>,
   completeTree: CompleteTreePaths,
   generation: number,
 ): void {
@@ -152,7 +153,7 @@ function addUnchangedNodes(
     ...completeTree.comparePaths.map(normalizedPath),
   ]);
   for (const path of completePaths) {
-    if (nodes.has(path)) {
+    if (nodes.has(path) || excludedPaths.has(path)) {
       continue;
     }
     const target = Object.freeze({ kind: 'unchanged' as const, path });
@@ -169,6 +170,19 @@ function addUnchangedNodes(
       generation,
     }));
   }
+}
+
+function changedPaths(files: readonly ChangedFile[]): ReadonlySet<string> {
+  const paths = new Set<string>();
+  for (const file of files) {
+    if (file.oldPath) {
+      paths.add(normalizedPath(file.oldPath));
+    }
+    if (file.newPath) {
+      paths.add(normalizedPath(file.newPath));
+    }
+  }
+  return paths;
 }
 
 function createTree(files: Iterable<ViewFileNode>): readonly ViewTreeNode[] {
