@@ -19,6 +19,8 @@ describe('DefaultGitAdapter command boundary', () => {
     await adapter.listTreePaths('/repo', fromSha);
     await adapter.readBlob('/repo', fromSha, 'src/file.ts');
     await adapter.getBlobSize('/repo', fromSha, 'src/file.ts');
+    await adapter.readBlobObject('/repo', fromSha);
+    await adapter.getBlobObjectSize('/repo', fromSha);
     await adapter.fetch('/repo', 'origin');
 
     const calls = run.mock.calls.map((call) => call[1]);
@@ -28,6 +30,7 @@ describe('DefaultGitAdapter command boundary', () => {
     expect(readCalls.every((args) => args[0] === '--no-lazy-fetch')).toBe(true);
     expect(fetchCall?.[0]).toBe('fetch');
     expect(fetchCall).not.toContain('--no-lazy-fetch');
+    expect(calls).toContainEqual(['--no-lazy-fetch', 'cat-file', 'blob', fromSha]);
 
     const diffCalls = calls.filter((args) => args.includes('diff'));
     expect(diffCalls).toHaveLength(2);

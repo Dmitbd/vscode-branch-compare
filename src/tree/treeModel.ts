@@ -49,6 +49,7 @@ export interface ViewFileNode {
   readonly target: DiffTarget;
   readonly generation: number;
   readonly pathKey?: string;
+  readonly previewable: boolean;
 }
 
 export type ViewTreeNode = ViewFolderNode | ViewFileNode;
@@ -158,14 +159,16 @@ function createChangedNodes(
     const file = immutableChangedFile(sourceFile);
     const status = presentationStatus(file);
     const pathKey = file.newPathKey ?? file.oldPathKey ?? Buffer.from(path).toString('base64url');
-    const binary = file.lineChanges?.additions === null || file.lineChanges?.deletions === null;
+    const previewable = file.oldObjectKind !== 'gitlink' && file.newObjectKind !== 'gitlink';
+    const binary = !previewable || file.lineChanges?.additions === null || file.lineChanges?.deletions === null;
     const target = Object.freeze({ kind: 'changed' as const, file });
     nodes.set(pathKey, Object.freeze({
-      id: fileId(target.kind, pathIdentity(path, pathKey)),
+      id: fileId(target.kind, pathIdentity(pathKey)),
       kind: 'file',
       label: basename(path),
       path,
       pathKey,
+      previewable,
       status,
       additions: binary ? '—' : metric(file.lineChanges?.additions),
       deletions: binary ? '—' : metric(file.lineChanges?.deletions),
@@ -194,13 +197,14 @@ function addUnchangedNodes(
     }
     const target = typeof entry === 'string'
       ? Object.freeze({ kind: 'unchanged' as const, path })
-      : Object.freeze({ kind: 'unchanged' as const, path, pathKey, blobOid: entry.blobOid });
+      : Object.freeze({ kind: 'unchanged' as const, path, pathKey, blobOid: entry.blobOid, objectKind: entry.objectKind });
     nodes.set(pathKey, Object.freeze({
-      id: fileId(target.kind, pathIdentity(path, pathKey)),
+      id: fileId(target.kind, pathIdentity(pathKey)),
       kind: 'file',
       label: basename(path),
       path,
       pathKey,
+      previewable: typeof entry === 'string' || entry.objectKind !== 'gitlink',
       status: undefined,
       additions: undefined,
       deletions: undefined,
@@ -239,7 +243,7 @@ function createTree(files: Iterable<ViewFileNode>): readonly ViewTreeNode[] {
       const displayPath = parent.displayPath ? `${parent.displayPath}/${segment}` : segment;
       const folderKey = segmentKeys[index] ?? segment;
       const rawFolderKey = joinRawSegmentKeys(segmentKeys.slice(0, index + 1));
-      const path = pathIdentity(displayPath, rawFolderKey);
+      const path = pathIdentity(rawFolderKey);
       let folder = parent.folders.get(folderKey);
       if (!folder) {
         folder = { label: segment, path, displayPath, folders: new Map(), files: [] };
@@ -335,6 +339,8 @@ function immutableChangedFile(file: ChangedFile): ChangedFile {
     newPathKey: file.newPathKey,
     oldBlobOid: file.oldBlobOid,
     newBlobOid: file.newBlobOid,
+    oldObjectKind: file.oldObjectKind,
+    newObjectKind: file.newObjectKind,
     lineChanges: file.lineChanges ? Object.freeze({ ...file.lineChanges }) : undefined,
   });
 }
@@ -343,8 +349,8 @@ function treePathKey(path: import('../domain/model').TreePath): string {
   return typeof path === 'string' ? Buffer.from(path).toString('base64url') : path.pathKey;
 }
 
-function pathIdentity(path: string, pathKey: string): string {
-  return Buffer.from(path).toString('base64url') === pathKey ? path : `raw:${pathKey}`;
+function pathIdentity(pathKey: string): string {
+  return `b64:${pathKey}`;
 }
 
 function rawSegmentKeys(pathKey: string): string[] {

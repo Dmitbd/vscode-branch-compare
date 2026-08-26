@@ -87,6 +87,49 @@ describe('formatMetric', () => {
 });
 
 describe('buildTreeModel', () => {
+  test('uses one globally injective raw-key namespace for colliding valid and invalid names', () => {
+    const invalidKey = Buffer.from([0xff]).toString('base64url');
+    const validPath = 'raw:_w';
+    const validKey = Buffer.from(validPath).toString('base64url');
+    const model = buildTreeModel(modelInput([
+      { ...changed('modified', '\\xFF', '\\xFF', 1, 1), oldPathKey: invalidKey, newPathKey: invalidKey },
+      { ...changed('modified', validPath, validPath, 1, 1), oldPathKey: validKey, newPathKey: validKey },
+    ]));
+    const nodes = flatten(model.nodes).filter((node) => node.kind === 'file');
+    expect(nodes.map((node) => node.id)).toEqual([
+      `changed:b64:${invalidKey}`,
+      `changed:b64:${validKey}`,
+    ]);
+    expect(new Set(nodes.map((node) => node.id)).size).toBe(2);
+
+    const invalidFolderRaw = Buffer.from([0xff, 0x2f, 0x61]);
+    const validFolderPath = 'b64:_w/a';
+    const folderModel = buildTreeModel(modelInput([
+      { ...changed('modified', '\\xFF/a', '\\xFF/a', 1, 1), oldPathKey: invalidFolderRaw.toString('base64url'), newPathKey: invalidFolderRaw.toString('base64url') },
+      { ...changed('modified', validFolderPath, validFolderPath, 1, 1), oldPathKey: Buffer.from(validFolderPath).toString('base64url'), newPathKey: Buffer.from(validFolderPath).toString('base64url') },
+    ]));
+    const folders = folderModel.nodes.filter((node) => node.kind === 'folder');
+    expect(folders).toHaveLength(2);
+    expect(new Set(folders.map((node) => node.id)).size).toBe(2);
+  });
+  test('represents changed and unchanged gitlinks as non-previewable file-like rows', () => {
+    const key = Buffer.from('vendor/sub').toString('base64url');
+    const oid = '9'.repeat(40);
+    const changedModel = buildTreeModel(modelInput([{
+      ...changed('modified', 'vendor/sub', 'vendor/sub', 1, 1),
+      oldPathKey: key, newPathKey: key, oldBlobOid: oid, newBlobOid: oid,
+      oldObjectKind: 'gitlink', newObjectKind: 'gitlink',
+    }]));
+    const changedNode = flatten(changedModel.nodes).find((node): node is ViewFileNode => node.kind === 'file');
+    expect(changedNode).toMatchObject({ previewable: false, binary: true, additions: '—', deletions: '—' });
+
+    const unchangedModel = buildTreeModel({
+      ...modelInput([]), showUnchanged: true,
+      completeTree: { mergeBasePaths: [], comparePaths: [{ path: 'vendor/sub', pathKey: key, blobOid: oid, objectKind: 'gitlink' }] },
+    });
+    const unchangedNode = flatten(unchangedModel.nodes).find((node): node is ViewFileNode => node.kind === 'file');
+    expect(unchangedNode).toMatchObject({ previewable: false, target: { objectKind: 'gitlink' } });
+  });
   test('publishes the selected repository label and only shows a selector for multiple repositories', () => {
     const secondRepository = {
       ...repository,
@@ -123,7 +166,7 @@ describe('buildTreeModel', () => {
     expect(model.summary).toEqual({ files: 4, additions: 14, deletions: 13 });
     expect(model.summaryMetrics).toEqual({ files: '4', additions: '14', deletions: '13' });
     expect(model.nodes[0]).toMatchObject({
-      kind: 'folder', label: 'src', path: 'src',
+      kind: 'folder', label: 'src', path: `b64:${Buffer.from('src').toString('base64url')}`,
       counts: { added: 1, modified: 2, deleted: 1 },
       formattedCounts: { added: '1', modified: '2', deleted: '1' },
     });
@@ -177,7 +220,7 @@ describe('buildTreeModel', () => {
       changed('modified', 'docs/guide.md', 'docs/guide.md', 1, 1),
     ]));
 
-    expect(model.initialExpandedPaths).toEqual(['apps']);
+    expect(model.initialExpandedPaths).toEqual([`b64:${Buffer.from('apps').toString('base64url')}`]);
   });
 
   test('unions changed files with neutral unchanged paths from both complete trees', () => {
@@ -219,8 +262,8 @@ describe('buildTreeModel', () => {
     expect(nodes).toHaveLength(2);
     expect(nodes.map((node) => node.path)).toEqual([decomposed, composed]);
     expect(nodes.map((node) => node.id)).toEqual([
-      `unchanged:${decomposed}`,
-      `unchanged:${composed}`,
+      `unchanged:b64:${Buffer.from(decomposed).toString('base64url')}`,
+      `unchanged:b64:${Buffer.from(composed).toString('base64url')}`,
     ]);
     expect(nodes.map((node) => node.target)).toEqual([
       { kind: 'unchanged', path: decomposed },
@@ -275,8 +318,8 @@ describe('buildTreeModel', () => {
     }));
 
     expect(model.nodes.map((node) => ({ kind: node.kind, path: node.path, id: node.id }))).toEqual([
-      { kind: 'folder', path: 'config', id: 'folder:config' },
-      { kind: 'file', path: 'config', id: 'changed:config' },
+      { kind: 'folder', path: `b64:${Buffer.from('config').toString('base64url')}`, id: `folder:b64:${Buffer.from('config').toString('base64url')}` },
+      { kind: 'file', path: 'config', id: `changed:b64:${Buffer.from('config').toString('base64url')}` },
     ]);
     expect(new Set(model.nodes.map((node) => node.id)).size).toBe(2);
   });

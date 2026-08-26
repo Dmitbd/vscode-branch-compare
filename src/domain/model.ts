@@ -1,5 +1,6 @@
 export type GitRefKind = 'local' | 'remote';
 export type ChangedFileStatus = 'added' | 'modified' | 'deleted' | 'renamed';
+export type GitObjectKind = 'blob' | 'gitlink';
 
 export interface GitRef {
   readonly fullName: string;
@@ -17,6 +18,8 @@ export interface ChangedFile {
   readonly newPathKey?: string;
   readonly oldBlobOid?: string;
   readonly newBlobOid?: string;
+  readonly oldObjectKind?: GitObjectKind;
+  readonly newObjectKind?: GitObjectKind;
   readonly lineChanges?: LineChanges;
 }
 
@@ -27,7 +30,7 @@ export interface LineChanges {
 
 export type DiffTarget =
   | { readonly kind: 'changed'; readonly file: ChangedFile }
-  | { readonly kind: 'unchanged'; readonly path: string; readonly pathKey?: string; readonly blobOid?: string };
+  | { readonly kind: 'unchanged'; readonly path: string; readonly pathKey?: string; readonly blobOid?: string; readonly objectKind?: GitObjectKind };
 
 export interface ChangeSummary {
   readonly files: number;
@@ -59,4 +62,5 @@ export type TreePath = string | {
   readonly path: string;
   readonly pathKey: string;
   readonly blobOid: string;
+  readonly objectKind?: GitObjectKind;
 };

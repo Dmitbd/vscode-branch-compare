@@ -183,7 +183,7 @@ export class DefaultGitAdapter implements GitAdapter {
 
   public readBlobObject(root: string, objectId: string, token?: CancellationToken): Promise<Buffer> {
     validateSha(objectId);
-    return this.runLocal(root, ['cat-file', '-p', objectId], token);
+    return this.runLocal(root, ['cat-file', 'blob', objectId], token);
   }
 
   public async getBlobObjectSize(root: string, objectId: string, token?: CancellationToken): Promise<number> {

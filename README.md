@@ -78,6 +78,7 @@ Machine-readable comparison disables external diff and text-conversion helpers a
 ## Limits
 
 - Binary blobs containing a NUL byte are not opened as text.
+- Submodule entries remain visible in the tree, but their commit pointers are not opened as text diffs.
 - Text previews larger than 10 MiB are rejected.
 - If a selected branch disappears after a Fetch or other external Git operation, select an available branch again.
 

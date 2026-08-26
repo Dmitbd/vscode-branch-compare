@@ -33,13 +33,13 @@ describe('parseNumStat', () => {
 
     expect(parseNumStat(output)).toMatchObject([
       {
-        oldPath: 'src/line\nbreak\tand-tab.ts',
-        newPath: 'src/line\nbreak\tand-tab.ts',
+        oldPath: 'src/line\\nbreak\\tand-tab.ts',
+        newPath: 'src/line\\nbreak\\tand-tab.ts',
         lineChanges: { additions: 1, deletions: 2 },
       },
       {
-        oldPath: 'old\nname\t.ts',
-        newPath: 'new\tname\n.ts',
+        oldPath: 'old\\nname\\t.ts',
+        newPath: 'new\\tname\\n.ts',
         lineChanges: { additions: 3, deletions: 4 },
       },
     ]);

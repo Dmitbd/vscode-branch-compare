@@ -99,6 +99,14 @@ describe('ComparisonService', () => {
       comparePaths: [],
     });
   });
+  test('deep-freezes typed gitlink tree entries in the comparison snapshot', async () => {
+    const adapter = createAdapter();
+    const result: ComparisonResult = { selection, baseSha, compareSha, mergeBaseSha, files: [], summary: { files: 0, additions: 0, deletions: 0 } };
+    const entry = { path: 'submodule', pathKey: Buffer.from('submodule').toString('base64url'), blobOid: 'd'.repeat(40), objectKind: 'gitlink' as const };
+    adapter.listTreePaths.mockResolvedValueOnce([entry]).mockResolvedValueOnce([]);
+    const trees = await new ComparisonService(adapter).loadCompleteTree(root, result);
+    expect(Object.isFrozen(trees.mergeBasePaths[0])).toBe(true);
+  });
 
   test('resolves refs in order and lists only merge-base to compare changes', async () => {
     const adapter = createAdapter();
@@ -125,6 +133,16 @@ describe('ComparisonService', () => {
 
     expect(result.summary).toEqual({ files: 3, additions: 12, deletions: 7 });
     expect(Object.isFrozen(result.summary)).toBe(true);
+  });
+  test('does not count gitlink pointer changes as source line additions or deletions', async () => {
+    const adapter = createAdapter();
+    arrangeSuccessfulComparison(adapter, [{
+      status: 'modified', oldPath: 'submodule', newPath: 'submodule',
+      oldObjectKind: 'gitlink', newObjectKind: 'gitlink',
+      lineChanges: { additions: 1, deletions: 1 },
+    }]);
+    const result = await new ComparisonService(adapter).compare(root, selection);
+    expect(result.summary).toEqual({ files: 1, additions: 0, deletions: 0 });
   });
 
   test('rejects the same ref without calling Git', async () => {

@@ -275,4 +275,15 @@ describe('openFullDiff', () => {
     expect(readBlobObject).toHaveBeenNthCalledWith(1, root, oldBlobOid, undefined);
     expect(readBlobObject).toHaveBeenNthCalledWith(2, root, newBlobOid, undefined);
   });
+
+  test('refuses a changed gitlink before creating content URIs or reading the commit as a blob', async () => {
+    await expect(openFullDiff(repositoryId, result, { kind: 'changed', file: {
+      status: 'modified', oldPath: 'submodule', newPath: 'submodule',
+      oldPathKey: Buffer.from('submodule').toString('base64url'),
+      newPathKey: Buffer.from('submodule').toString('base64url'),
+      oldBlobOid: '1'.repeat(40), newBlobOid: '2'.repeat(40),
+      oldObjectKind: 'gitlink', newObjectKind: 'gitlink',
+    } }, 'origin/main', 'feature/x')).rejects.toThrow('Submodule changes cannot be previewed');
+    expect(commands.executeCommand).not.toHaveBeenCalled();
+  });
 });

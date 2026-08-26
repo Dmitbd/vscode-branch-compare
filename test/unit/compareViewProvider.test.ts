@@ -194,7 +194,7 @@ describe('CompareViewProvider', () => {
     });
     h.send({ type: 'open-diff', nodeId: 'changed:unknown.ts', generation: 7 });
     h.send({ type: 'open-diff', nodeId: 'changed:src/file.ts', generation: 6 });
-    h.send({ type: 'open-diff', nodeId: 'changed:src/file.ts', generation: 7 });
+    h.send({ type: 'open-diff', nodeId: `changed:b64:${Buffer.from('src/file.ts').toString('base64url')}`, generation: 7 });
 
     expect(actions).toEqual([{
       type: 'openDiff',

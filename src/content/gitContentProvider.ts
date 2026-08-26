@@ -32,6 +32,13 @@ export class BlobTooLargeError extends Error {
   }
 }
 
+export class UnsupportedGitObjectError extends Error {
+  public constructor() {
+    super('Submodule changes cannot be previewed as text');
+    this.name = 'UnsupportedGitObjectError';
+  }
+}
+
 export class GitContentProvider implements vscode.TextDocumentContentProvider {
   private readonly cache = new Map<string, string>();
 
@@ -114,6 +121,7 @@ function createDiffRefs(
   target: DiffTarget,
 ): { left: VirtualDocumentRef; right: VirtualDocumentRef; displayPath: string } {
   if (target.kind === 'unchanged') {
+    if (target.objectKind === 'gitlink') throw new UnsupportedGitObjectError();
     return {
       left: documentRef(repositoryId, result.mergeBaseSha, target.path, false, target.pathKey, target.blobOid),
       right: documentRef(repositoryId, result.compareSha, target.path, false, target.pathKey, target.blobOid),
@@ -129,6 +137,9 @@ function createChangedDiffRefs(
   result: ComparisonResult,
   file: ChangedFile,
 ): { left: VirtualDocumentRef; right: VirtualDocumentRef; displayPath: string } {
+  if (file.oldObjectKind === 'gitlink' || file.newObjectKind === 'gitlink') {
+    throw new UnsupportedGitObjectError();
+  }
   switch (file.status) {
     case 'modified': {
       const oldPath = requiredPath(file.oldPath, 'modified file old path');

@@ -542,8 +542,14 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
         appendMetric(row, formatLineMetric(node.deletions, '−'), lineMetricClass(node.deletions, 'deletion'), 'Deleted', lineAriaLabel(node.deletions, 'deleted'));
       }
       const details = node.binary ? 'Line changes unavailable' : fileAriaLabel(node);
-      row.setAttribute('aria-label', node.label + ', ' + statusName(node.status) + ', ' + details);
+      const previewDetails = node.previewable === false ? 'Submodule changes cannot be previewed' : details;
+      row.setAttribute('aria-label', node.label + ', ' + statusName(node.status) + ', ' + previewDetails);
+      if (node.previewable === false) {
+        row.setAttribute('aria-disabled', 'true');
+        row.title = 'Submodule changes cannot be previewed';
+      }
       const open = function () {
+        if (node.previewable === false) return;
         vscode.postMessage({ type: 'open-diff', nodeId: node.id, generation: node.generation });
       };
       row.addEventListener('click', open);

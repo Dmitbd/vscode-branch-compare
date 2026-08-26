@@ -33,12 +33,25 @@ export function gitPath(bytes: Buffer): GitPathIdentity {
 
 function displayPath(bytes: Buffer): string {
   try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    return escapeDisplay(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
   } catch {
     return [...bytes].map((byte) => (
-      byte >= 0x20 && byte <= 0x7e ? String.fromCharCode(byte) : `\\x${byte.toString(16).padStart(2, '0').toUpperCase()}`
+      byte === 0x5c ? '\\\\' : byte >= 0x20 && byte <= 0x7e ? String.fromCharCode(byte) : `\\x${byte.toString(16).padStart(2, '0').toUpperCase()}`
     )).join('');
   }
+}
+
+function escapeDisplay(value: string): string {
+  return [...value].map((character) => {
+    const code = character.codePointAt(0)!;
+    if (character === '\\') return '\\\\';
+    if (character === '\t') return '\\t';
+    if (character === '\n') return '\\n';
+    if (character === '\r') return '\\r';
+    if (code <= 0x1f || (code >= 0x7f && code <= 0x9f)) return `\\x${code.toString(16).padStart(2, '0').toUpperCase()}`;
+    if (/\p{Cf}/u.test(character)) return `\\u{${code.toString(16).toUpperCase()}}`;
+    return character;
+  }).join('');
 }
 
 function splitByte(value: Buffer, delimiter: number): Buffer[] {

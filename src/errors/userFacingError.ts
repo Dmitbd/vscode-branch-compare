@@ -1,5 +1,5 @@
 import { IdenticalSelectionError, MissingRefError, NoCommonAncestorError } from '../compare/comparisonService';
-import { BinaryBlobError, BlobTooLargeError } from '../content/gitContentProvider';
+import { BinaryBlobError, BlobTooLargeError, UnsupportedGitObjectError } from '../content/gitContentProvider';
 import { GitCommandError } from '../git/commandRunner';
 
 export class UserFacingError extends Error {
@@ -27,6 +27,9 @@ export function toUserFacingError(error: unknown): UserFacingError {
   }
   if (error instanceof BlobTooLargeError) {
     return new UserFacingError('This file exceeds the 10 MiB text preview limit', error);
+  }
+  if (error instanceof UnsupportedGitObjectError) {
+    return new UserFacingError('Submodule changes cannot be previewed as text', error);
   }
   if (isMissingGitObjectError(error)) {
     return new UserFacingError(

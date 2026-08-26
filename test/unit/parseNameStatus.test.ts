@@ -26,6 +26,13 @@ describe('parseNameStatus', () => {
     expect(files.map((file) => file.newBlobOid)).toEqual([firstOid, secondOid]);
     expect(new Set(files.map((file) => file.newPathKey)).size).toBe(2);
   });
+  test('marks mode 160000 raw diff entries as gitlinks', () => {
+    const oid = '4'.repeat(40);
+    const output = Buffer.from(`:160000 160000 ${oldOid} ${oid} M\0submodule\0`);
+    expect(parseNameStatus(output)[0]).toMatchObject({
+      oldObjectKind: 'gitlink', newObjectKind: 'gitlink', oldBlobOid: oldOid, newBlobOid: oid,
+    });
+  });
   test('parses modified files and renames without splitting paths on whitespace', () => {
     expect(parseNameStatus(Buffer.concat([raw('M', 'src/a.ts'), raw('R100', 'old name.ts', 'new name.ts')]))).toMatchObject([
       { status: 'modified', oldPath: 'src/a.ts', newPath: 'src/a.ts' },

@@ -131,11 +131,14 @@ export class ComparisonService {
         }))
         .sort(compareChangedFiles),
     );
-    const summary = Object.freeze(files.reduce<ChangeSummary>((total, file) => ({
-      files: total.files + 1,
-      additions: total.additions + (file.lineChanges?.additions ?? 0),
-      deletions: total.deletions + (file.lineChanges?.deletions ?? 0),
-    }), { files: 0, additions: 0, deletions: 0 }));
+    const summary = Object.freeze(files.reduce<ChangeSummary>((total, file) => {
+      const previewable = file.oldObjectKind !== 'gitlink' && file.newObjectKind !== 'gitlink';
+      return {
+        files: total.files + 1,
+        additions: total.additions + (previewable ? file.lineChanges?.additions ?? 0 : 0),
+        deletions: total.deletions + (previewable ? file.lineChanges?.deletions ?? 0 : 0),
+      };
+    }, { files: 0, additions: 0, deletions: 0 }));
 
     return Object.freeze({
       baseSha,
@@ -185,7 +188,9 @@ function freezeSortedPaths(paths: readonly TreePath[]): readonly TreePath[] {
   if (new Set(paths.map(pathKey)).size !== paths.length) {
     throw new TypeError('Duplicate tree path.');
   }
-  return Object.freeze([...paths].sort(comparePaths));
+  return Object.freeze(paths
+    .map((path) => typeof path === 'string' ? path : Object.freeze({ ...path }))
+    .sort(comparePaths));
 }
 
 function comparePaths(left: TreePath, right: TreePath): number {

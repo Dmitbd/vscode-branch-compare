@@ -18,6 +18,13 @@ describe('parsePathList', () => {
     ]);
     expect(entries.map((entry) => entry.blobOid)).toEqual([firstOid, secondOid]);
   });
+  test('keeps gitlinks as non-blob tree entries without rejecting the snapshot', () => {
+    const oid = 'c'.repeat(40);
+    expect(parsePathList(Buffer.from(`160000 commit ${oid}\tsubmodule\0`))).toEqual([{
+      path: 'submodule', pathKey: Buffer.from('submodule').toString('base64url'), blobOid: oid,
+      objectKind: 'gitlink',
+    }]);
+  });
   test('parses NUL-delimited Unicode paths', () => {
     expect(parsePathList(Buffer.from('README.md\0src/файл.ts\0')))
       .toEqual(['README.md', 'src/файл.ts']);
@@ -25,7 +32,7 @@ describe('parsePathList', () => {
 
   test('preserves backslashes and drive-like prefixes as literal Git filename characters', () => {
     expect(parsePathList(Buffer.from('src\\..\\literal.ts\0C:\\folder\\file.ts\0\\\\server-name\0')))
-      .toEqual(['src\\..\\literal.ts', 'C:\\folder\\file.ts', '\\\\server-name']);
+      .toEqual(['src\\\\..\\\\literal.ts', 'C:\\\\folder\\\\file.ts', '\\\\\\\\server-name']);
   });
 
   test.each(['src/a.ts', '\0', '/absolute.ts\0', '../escape.ts\0'])
