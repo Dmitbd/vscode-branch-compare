@@ -60,6 +60,7 @@ describe('ComparisonService', () => {
       compareSha,
       mergeBaseSha,
       files: [],
+      summary: { files: 0, additions: 0, deletions: 0 },
     };
     adapter.listTreePaths
       .mockResolvedValueOnce(['z10.txt', 'e\u0301clair.txt', 'z2.txt'])
@@ -87,6 +88,7 @@ describe('ComparisonService', () => {
       compareSha,
       mergeBaseSha,
       files: [],
+      summary: { files: 0, additions: 0, deletions: 0 },
     };
     adapter.listTreePaths
       .mockResolvedValueOnce(['e\u0301clair.txt', 'éclair.txt'])
@@ -107,6 +109,20 @@ describe('ComparisonService', () => {
     expect(adapter.resolveCommit).toHaveBeenNthCalledWith(2, root, 'refs/heads/feature', token);
     expect(adapter.findMergeBase).toHaveBeenCalledWith(root, baseSha, compareSha, token);
     expect(adapter.listChangedFiles).toHaveBeenCalledWith(root, mergeBaseSha, compareSha, token);
+  });
+
+  test('summarizes numeric line changes while binary files contribute only to file count', async () => {
+    const adapter = createAdapter();
+    arrangeSuccessfulComparison(adapter, [
+      { status: 'added', oldPath: undefined, newPath: 'src/new.ts', lineChanges: { additions: 12, deletions: 0 } },
+      { status: 'modified', oldPath: 'assets/logo.png', newPath: 'assets/logo.png', lineChanges: { additions: null, deletions: null } },
+      { status: 'deleted', oldPath: 'src/old.ts', newPath: undefined, lineChanges: { additions: 0, deletions: 7 } },
+    ]);
+
+    const result = await new ComparisonService(adapter).compare(root, selection);
+
+    expect(result.summary).toEqual({ files: 3, additions: 12, deletions: 7 });
+    expect(Object.isFrozen(result.summary)).toBe(true);
   });
 
   test('rejects the same ref without calling Git', async () => {
@@ -208,10 +224,18 @@ describe('ComparisonService', () => {
       'e\u0301clair.txt',
       'zeta.txt',
     ]);
-    expect(result).toEqual({ selection, baseSha, compareSha, mergeBaseSha, files: result.files });
+    expect(result).toEqual({
+      selection,
+      baseSha,
+      compareSha,
+      mergeBaseSha,
+      files: result.files,
+      summary: { files: 3, additions: 0, deletions: 0 },
+    });
     expect(Object.isFrozen(result)).toBe(true);
     expect(Object.isFrozen(result.selection)).toBe(true);
     expect(Object.isFrozen(result.files)).toBe(true);
+    expect(Object.isFrozen(result.summary)).toBe(true);
     expect(result.files.every(Object.isFrozen)).toBe(true);
     expect(() => (result.files as ChangedFile[]).push(files[0])).toThrow();
   });

@@ -1,4 +1,4 @@
-import type { ChangedFile } from '../domain/model';
+import type { ChangedFile, ChangeSummary } from '../domain/model';
 
 const defaultMaximumEntries = 16;
 
@@ -7,6 +7,7 @@ export interface ComparisonData {
   readonly compareSha: string;
   readonly mergeBaseSha: string;
   readonly files: readonly ChangedFile[];
+  readonly summary: ChangeSummary;
 }
 
 export class ComparisonCache {

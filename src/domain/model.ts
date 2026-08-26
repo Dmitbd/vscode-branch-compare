@@ -21,6 +21,16 @@ export interface LineChanges {
   readonly deletions: number | null;
 }
 
+export type DiffTarget =
+  | { readonly kind: 'changed'; readonly file: ChangedFile }
+  | { readonly kind: 'unchanged'; readonly path: string };
+
+export interface ChangeSummary {
+  readonly files: number;
+  readonly additions: number;
+  readonly deletions: number;
+}
+
 export interface ComparisonSelection {
   readonly repositoryUri: string;
   readonly baseRef: string;
@@ -33,6 +43,7 @@ export interface ComparisonResult {
   readonly compareSha: string;
   readonly mergeBaseSha: string;
   readonly files: readonly ChangedFile[];
+  readonly summary: ChangeSummary;
 }
 
 export interface CompleteTreePaths {

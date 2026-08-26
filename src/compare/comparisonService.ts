@@ -1,6 +1,7 @@
 import type { CancellationToken } from 'vscode';
 import type {
   ChangedFile,
+  ChangeSummary,
   ComparisonResult,
   ComparisonSelection,
   CompleteTreePaths,
@@ -123,15 +124,24 @@ export class ComparisonService {
     throwIfCancelled(token);
     const files = Object.freeze(
       changedFiles
-        .map((file) => Object.freeze({ ...file }))
+        .map((file) => Object.freeze({
+          ...file,
+          lineChanges: file.lineChanges ? Object.freeze({ ...file.lineChanges }) : undefined,
+        }))
         .sort(compareChangedFiles),
     );
+    const summary = Object.freeze(files.reduce<ChangeSummary>((total, file) => ({
+      files: total.files + 1,
+      additions: total.additions + (file.lineChanges?.additions ?? 0),
+      deletions: total.deletions + (file.lineChanges?.deletions ?? 0),
+    }), { files: 0, additions: 0, deletions: 0 }));
 
     return Object.freeze({
       baseSha,
       compareSha,
       mergeBaseSha,
       files,
+      summary,
     });
   }
 }

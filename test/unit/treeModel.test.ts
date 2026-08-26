@@ -1,7 +1,19 @@
 import { describe, expect, test } from 'vitest';
-import type { ChangedFile, ComparisonResult, ComparisonSelection, GitRef } from '../../src/domain/model';
+import type {
+  ChangedFile,
+  ChangeSummary,
+  ComparisonResult,
+  ComparisonSelection,
+  CompleteTreePaths,
+  GitRef,
+} from '../../src/domain/model';
 import type { RepositorySnapshot } from '../../src/repositories/repositoryProvider';
-import { buildTreeModel } from '../../src/tree/treeModel';
+import {
+  buildTreeModel,
+  formatMetric,
+  type ViewFileNode,
+  type ViewTreeNode,
+} from '../../src/tree/treeModel';
 
 const repository = {
   id: 'repo-1',
@@ -9,12 +21,6 @@ const repository = {
   currentBranch: 'feature/x',
   remotes: ['origin'],
 } as unknown as RepositorySnapshot;
-
-const secondRepository = {
-  ...repository,
-  id: 'repo-2',
-  rootUri: { toString: () => 'file:///workspace/second-project' },
-} as RepositorySnapshot;
 
 const refs: readonly GitRef[] = [
   { fullName: 'refs/remotes/origin/develop', displayName: 'origin/develop', kind: 'remote', remote: 'origin', commit: 'a'.repeat(40) },
@@ -27,115 +33,156 @@ const selection: ComparisonSelection = {
   compareRef: 'refs/heads/feature/x',
 };
 
+function changed(
+  status: ChangedFile['status'],
+  oldPath: string | undefined,
+  newPath: string | undefined,
+  additions: number | null,
+  deletions: number | null,
+): ChangedFile {
+  return { status, oldPath, newPath, lineChanges: { additions, deletions } };
+}
+
 function result(files: readonly ChangedFile[]): ComparisonResult {
+  const summary = files.reduce<ChangeSummary>((total, file) => ({
+    files: total.files + 1,
+    additions: total.additions + (file.lineChanges?.additions ?? 0),
+    deletions: total.deletions + (file.lineChanges?.deletions ?? 0),
+  }), { files: 0, additions: 0, deletions: 0 });
   return {
     selection,
     baseSha: 'a'.repeat(40),
     compareSha: 'b'.repeat(40),
     mergeBaseSha: 'c'.repeat(40),
     files,
+    summary,
   };
 }
 
+function modelInput(files: readonly ChangedFile[], overrides: Record<string, unknown> = {}) {
+  return {
+    repositories: [repository],
+    repository,
+    refs,
+    selection,
+    result: result(files),
+    comparisonGeneration: 7,
+    ...overrides,
+  };
+}
+
+function flatten(nodes: readonly ViewTreeNode[]): readonly ViewFileNode[] {
+  return nodes.flatMap((node) => node.kind === 'file' ? [node] : flatten(node.children));
+}
+
+describe('formatMetric', () => {
+  test.each([
+    [9999, '9999'],
+    [10000, '10k'],
+    [12400, '12.4k'],
+  ])('formats %i as %s', (value, expected) => {
+    expect(formatMetric(value)).toBe(expected);
+  });
+});
+
 describe('buildTreeModel', () => {
-  test('renders branch pickers and a nested, naturally sorted file tree for one repository', () => {
-    const files: readonly ChangedFile[] = [
-      { status: 'modified', oldPath: 'src/zeta.ts', newPath: 'src/zeta.ts' },
-      { status: 'added', oldPath: undefined, newPath: 'src/components/Button2.tsx' },
-      { status: 'deleted', oldPath: 'README.md', newPath: undefined },
-      { status: 'renamed', oldPath: 'src/Old.ts', newPath: 'src/New.ts' },
-      { status: 'added', oldPath: undefined, newPath: 'src/components/Button10.tsx' },
-    ];
-
-    const tree = buildTreeModel({ repositories: [repository], repository, refs, selection, result: result(files) });
-
-    expect(tree).toMatchObject([
-      { kind: 'base', label: 'BASE', description: 'origin/develop', command: 'branchCompare.selectBase' },
-      { kind: 'compare', label: 'COMPARE', description: 'feature/x', command: 'branchCompare.selectCompare' },
-      { kind: 'folder', label: 'src' },
-      { kind: 'file', label: 'README.md', file: { status: 'deleted' } },
-    ]);
-    expect(tree.some((node) => node.kind === 'repository')).toBe(false);
-
-    const src = tree.find((node) => node.kind === 'folder' && node.label === 'src');
-    expect(src).toMatchObject({
-      children: [
-        {
-          kind: 'folder',
-          label: 'components',
-          children: [
-            { kind: 'file', label: 'Button2.tsx', file: { status: 'added' } },
-            { kind: 'file', label: 'Button10.tsx', file: { status: 'added' } },
-          ],
-        },
-        { kind: 'file', label: 'New.ts', file: { status: 'renamed', oldPath: 'src/Old.ts', newPath: 'src/New.ts' } },
-        { kind: 'file', label: 'zeta.ts', file: { status: 'modified' } },
-      ],
-    });
-  });
-
-  test('shows the repository picker only when more than one repository is available', () => {
-    const tree = buildTreeModel({
-      repositories: [repository, secondRepository],
-      repository,
-      refs,
-      selection,
-      result: result([]),
-    });
-
-    expect(tree[0]).toMatchObject({
-      kind: 'repository',
-      label: 'REPOSITORY',
-      command: 'branchCompare.selectRepository',
-    });
-  });
-
-  test('keeps changed-file data and every node immutable', () => {
-    const file: ChangedFile = { status: 'modified', oldPath: 'src/a.ts', newPath: 'src/a.ts' };
-    const tree = buildTreeModel({ repositories: [repository], repository, refs, selection, result: result([file]) });
-    const src = tree.find((node) => node.kind === 'folder' && node.label === 'src');
-    const fileNode = src?.kind === 'folder' ? src.children[0] : undefined;
-
-    expect(Object.isFrozen(tree)).toBe(true);
-    expect(Object.isFrozen(src)).toBe(true);
-    expect(fileNode).toMatchObject({ kind: 'file', file });
-    if (!fileNode || fileNode.kind !== 'file') {
-      throw new Error('Expected a file node.');
-    }
-    expect(Object.isFrozen(fileNode.file)).toBe(true);
-    expect(fileNode.file).not.toBe(file);
-    expect(() => { (fileNode.file as { status: string }).status = 'added'; }).toThrow();
-  });
-
-  test('communicates empty, loading, missing-selection, missing-repository, and retryable-error states', () => {
-    expect(buildTreeModel({ repositories: [repository], repository, refs, selection, result: result([]) }))
-      .toContainEqual({ kind: 'message', label: 'No changed files.' });
-    expect(buildTreeModel({ repositories: [repository], repository, refs, selection, loading: true }))
-      .toContainEqual({ kind: 'message', label: 'Comparing branches…' });
-    expect(buildTreeModel({ repositories: [repository], repository, refs }))
-      .toContainEqual({ kind: 'message', label: 'Select BASE and COMPARE branches.' });
-    expect(buildTreeModel({ repositories: [], refs }))
-      .toEqual([{ kind: 'message', label: 'No repositories found' }]);
-    expect(buildTreeModel({ repositories: [repository], repository, refs, selection, error: new Error('Git failed') }))
-      .toContainEqual({
-        kind: 'message',
-        label: 'Git failed',
-        command: 'branchCompare.refresh',
-      });
-  });
-
-  test('shows an incomplete manual selection until both branches are chosen', () => {
-    const tree = buildTreeModel({
-      repositories: [repository],
-      repository,
-      refs,
-      baseRef: 'refs/remotes/origin/develop',
-    });
-
-    expect(tree).toEqual(expect.arrayContaining([
-      expect.objectContaining({ kind: 'base', description: 'origin/develop' }),
-      expect.objectContaining({ kind: 'compare', description: 'Select a branch' }),
-      expect.objectContaining({ kind: 'message', label: 'Select a compare branch' }),
+  test('builds branch, summary, folder aggregate, and file presentation data', () => {
+    const model = buildTreeModel(modelInput([
+      changed('added', undefined, 'src/new.ts', 10, 0),
+      changed('modified', 'src/edit.ts', 'src/edit.ts', 3, 4),
+      changed('renamed', 'src/old.ts', 'src/renamed.ts', 1, 1),
+      changed('deleted', 'src/removed.ts', undefined, 0, 8),
     ]));
+
+    expect(model.branches).toEqual({ base: 'origin/develop', compare: 'feature/x' });
+    expect(model.summary).toEqual({ files: 4, additions: 14, deletions: 13 });
+    expect(model.nodes[0]).toMatchObject({
+      kind: 'folder', label: 'src', path: 'src',
+      counts: { added: 1, modified: 2, deleted: 1 },
+    });
+    expect(flatten(model.nodes).find((node) => node.path === 'src/renamed.ts')).toMatchObject({
+      status: 'modified', additions: '1', deletions: '1',
+      target: { kind: 'changed', file: { status: 'renamed' } }, generation: 7,
+    });
+  });
+
+  test('counts a renamed file once as modified and preserves fixed zero count slots', () => {
+    const model = buildTreeModel(modelInput([
+      changed('renamed', 'src/old.ts', 'src/new.ts', 0, 0),
+    ]));
+
+    expect(model.nodes[0]).toMatchObject({
+      kind: 'folder', counts: { added: 0, modified: 1, deleted: 0 },
+    });
+    expect(Object.keys(model.nodes[0]?.kind === 'folder' ? model.nodes[0].counts : {}))
+      .toEqual(['added', 'modified', 'deleted']);
+  });
+
+  test('uses dash metrics for a binary changed file', () => {
+    const model = buildTreeModel(modelInput([
+      changed('modified', 'assets/logo.png', 'assets/logo.png', null, null),
+    ]));
+
+    expect(flatten(model.nodes)[0]).toMatchObject({
+      binary: true, additions: '—', deletions: '—',
+    });
+  });
+
+  test('unions changed files with neutral unchanged paths from both complete trees', () => {
+    const files = [
+      changed('modified', 'src/edit.ts', 'src/edit.ts', 3, 4),
+      changed('added', undefined, 'src/new.ts', 10, 0),
+      changed('deleted', 'src/removed.ts', undefined, 0, 8),
+    ];
+    const completeTree: CompleteTreePaths = {
+      mergeBasePaths: ['README.md', 'src/edit.ts', 'src/removed.ts'],
+      comparePaths: ['README.md', 'src/edit.ts', 'src/new.ts'],
+    };
+
+    const model = buildTreeModel(modelInput(files, { showUnchanged: true, completeTree }));
+    const nodes = flatten(model.nodes);
+
+    expect(nodes.map((node) => node.path).sort()).toEqual([
+      'README.md', 'src/edit.ts', 'src/new.ts', 'src/removed.ts',
+    ]);
+    expect(nodes.find((node) => node.path === 'README.md')).toEqual(expect.objectContaining({
+      status: undefined, additions: undefined, deletions: undefined, binary: false,
+      target: { kind: 'unchanged', path: 'README.md' },
+    }));
+    expect(nodes.find((node) => node.path === 'src/new.ts')?.status).toBe('added');
+    expect(nodes.find((node) => node.path === 'src/removed.ts')?.status).toBe('deleted');
+  });
+
+  test('keeps deleted files visible without a complete tree', () => {
+    const model = buildTreeModel(modelInput([
+      changed('deleted', 'src/removed.ts', undefined, 0, 8),
+    ]));
+
+    expect(flatten(model.nodes)).toContainEqual(expect.objectContaining({
+      path: 'src/removed.ts', status: 'deleted',
+      target: { kind: 'changed', file: expect.objectContaining({ oldPath: 'src/removed.ts' }) },
+    }));
+  });
+
+  test('retains existing result nodes while a refresh is loading', () => {
+    const model = buildTreeModel(modelInput([
+      changed('modified', 'src/edit.ts', 'src/edit.ts', 3, 4),
+    ], { loading: true }));
+
+    expect(model.loading).toBe(true);
+    expect(flatten(model.nodes)).toHaveLength(1);
+    expect(model.summary).toEqual({ files: 1, additions: 3, deletions: 4 });
+  });
+
+  test('an error without a result exposes retry and no stale summary or nodes', () => {
+    const model = buildTreeModel({
+      repositories: [repository], repository, refs, selection,
+      comparisonGeneration: 7, error: new Error('Git failed'),
+    });
+
+    expect(model).toMatchObject({
+      error: 'Git failed', canRetry: true, loading: false, nodes: [],
+    });
+    expect(model.summary).toBeUndefined();
   });
 });
