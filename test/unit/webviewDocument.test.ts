@@ -11,6 +11,8 @@ describe('createWebviewDocument', () => {
     expect(html).toContain("default-src 'none'");
     expect(html).toContain("script-src 'nonce-fixed-nonce'");
     expect(html).toContain('vscode-resource:');
+    expect(html).not.toContain("'unsafe-inline'");
+    expect(html).not.toContain("'unsafe-eval'");
     expect(html).toContain('BASE');
     expect(html).toContain('COMPARE');
     expect(html).toContain('CHANGED FILES');
@@ -23,6 +25,14 @@ describe('createWebviewDocument', () => {
     expect(html).toContain('>Refresh<');
     expect(html).not.toContain('merges into');
     expect(html).not.toMatch(/#[0-9a-f]{3,8}/i);
+  });
+
+  test('emits syntactically valid isolated webview JavaScript', () => {
+    const html = createWebviewDocument({ cspSource: 'test:', nonce: 'nonce' });
+    const script = html.match(/<script nonce="nonce">([\s\S]*?)<\/script>/)?.[1];
+
+    expect(script).toBeDefined();
+    expect(() => new Function(script ?? '')).not.toThrow();
   });
 
   test('uses VS Code theme tokens, fixed right metrics, and currentColor SVG icons', () => {

@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 describe('extension manifest', () => {
   const manifest = JSON.parse(readFileSync(resolve('package.json'), 'utf8'));
+  const readme = readFileSync(resolve('README.md'), 'utf8');
 
   it('registers only read-only comparison commands', () => {
     const commands = manifest.contributes.commands.map((item: { command: string }) => item.command);
@@ -36,5 +37,12 @@ describe('extension manifest', () => {
       name: 'Branch Compare',
       type: 'webview',
     });
+  });
+
+  it('documents BASE above COMPARE and the upward comparison direction', () => {
+    expect(readme).toContain('shows `BASE` above `COMPARE`');
+    expect(readme).toContain('viewed from `COMPARE` toward `BASE`');
+    expect(readme).not.toContain('shows `BASE` below `COMPARE`');
+    expect(readme).not.toContain('upward arrow from BASE to COMPARE');
   });
 });

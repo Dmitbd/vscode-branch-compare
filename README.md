@@ -37,7 +37,7 @@ The initial COMPARE is the current local branch. BASE prefers the selected remot
 
 ### Comparison view
 
-The branch picker shows `BASE` below `COMPARE`, with an upward arrow from BASE to COMPARE. The changed-files header summarizes the number of files and the total `+added` and `-deleted` lines. Every folder repeats recursive added, modified, and deleted file counts, while each changed file shows one status marker plus its own `+added/-deleted` line counts. Binary files use `—` because text line counts are unavailable.
+The branch picker shows `BASE` above `COMPARE`; the upward arrow means the comparison is viewed from `COMPARE` toward `BASE`. The changed-files header summarizes the number of files and the total `+added` and `-deleted` lines. Every folder repeats recursive added, modified, and deleted file counts, while each changed file shows one status marker plus its own `+added/-deleted` line counts. Binary files use `—` because text line counts are unavailable.
 
 By default, the tree contains changed files only. Use the eye button to show or hide neutral unchanged files; its Russian popover changes between `показать файлы без изменений` and `скрыть файлы без изменений`. The adjacent `свернуть все папки` button collapses the entire tree.
 
