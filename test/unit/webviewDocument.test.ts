@@ -140,6 +140,35 @@ describe('createWebviewDocument', () => {
     expect(html).not.toContain('row.dataset.parentPath');
   });
 
+  test('executes generated folder and file accessible-label formatters without C1 byte collisions', () => {
+    const html = createWebviewDocument({ cspSource: 'test:', nonce: 'nonce' });
+    const script = html.match(/<script nonce="nonce">([\s\S]*?)<\/script>/)?.[1] ?? '';
+    const folderFormatter = script.match(/function folderAriaLabel\(node, expanded\) \{[\s\S]*?\n    \}/)?.[0] ?? '';
+    const fileFormatter = script.match(/function fileAriaLabel\(node\) \{[\s\S]*?\n    \}/)?.[0] ?? '';
+    const statusFormatter = script.match(/function statusName\(status\) \{[\s\S]*?\n    \}/)?.[0] ?? '';
+    const formatters = new Function(
+      `${folderFormatter}\n${fileFormatter}\n${statusFormatter}\nreturn { folderAriaLabel, fileAriaLabel, statusName };`,
+    )() as {
+      folderAriaLabel(node: unknown, expanded: boolean): string;
+      fileAriaLabel(node: unknown): string;
+      statusName(status: string): string;
+    };
+    const counts = { added: 1, modified: 0, deleted: 0 };
+    const validFolder = formatters.folderAriaLabel({ label: '\\u{85}', counts }, false);
+    const invalidFolder = formatters.folderAriaLabel({ label: '\\x85', counts }, false);
+    const validFile = '\\u{85}, ' + formatters.statusName('modified') + ', '
+      + formatters.fileAriaLabel({ additions: '1', deletions: '0' });
+    const invalidFile = '\\x85, ' + formatters.statusName('modified') + ', '
+      + formatters.fileAriaLabel({ additions: '1', deletions: '0' });
+
+    expect(validFolder).toContain('\\u{85}, folder');
+    expect(invalidFolder).toContain('\\x85, folder');
+    expect(validFolder).not.toBe(invalidFolder);
+    expect(validFile).toContain('\\u{85}, Modified');
+    expect(invalidFile).toContain('\\x85, Modified');
+    expect(validFile).not.toBe(invalidFile);
+  });
+
   test('places a status marker and file icon on the left and line metrics on the right', () => {
     const html = createWebviewDocument({ cspSource: 'test:', nonce: 'nonce' });
     const fileRenderer = html.match(

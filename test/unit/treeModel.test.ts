@@ -113,19 +113,26 @@ describe('buildTreeModel', () => {
     expect(folders).toHaveLength(2);
     expect(new Set(folders.map((node) => node.id)).size).toBe(2);
   });
-  test('keeps valid C1 and invalid raw-byte file, folder, and ARIA labels visually distinct', () => {
+  test('keeps valid C1 and invalid raw-byte folder and sibling-file labels visually distinct', () => {
     const validRaw = Buffer.from([0xc2, 0x85, 0x2f, 0x66]);
     const invalidRaw = Buffer.from([0x85, 0x2f, 0x66]);
+    const validFileRaw = Buffer.from([0x64, 0x2f, 0xc2, 0x85]);
+    const invalidFileRaw = Buffer.from([0x64, 0x2f, 0x85]);
     const valid = gitPath(validRaw);
     const invalid = gitPath(invalidRaw);
+    const validFile = gitPath(validFileRaw);
+    const invalidFile = gitPath(invalidFileRaw);
     const model = buildTreeModel(modelInput([
       { ...changed('modified', valid.path, valid.path, 1, 1), oldPathKey: valid.pathKey, newPathKey: valid.pathKey },
       { ...changed('modified', invalid.path, invalid.path, 1, 1), oldPathKey: invalid.pathKey, newPathKey: invalid.pathKey },
+      { ...changed('modified', validFile.path, validFile.path, 1, 1), oldPathKey: validFile.pathKey, newPathKey: validFile.pathKey },
+      { ...changed('modified', invalidFile.path, invalidFile.path, 1, 1), oldPathKey: invalidFile.pathKey, newPathKey: invalidFile.pathKey },
     ]));
     const folders = model.nodes.filter((node) => node.kind === 'folder');
-    expect(folders.map((node) => node.label)).toEqual(['\\u{85}', '\\x85']);
-    expect(new Set(folders.map((node) => node.label)).size).toBe(2);
-    expect(folders.flatMap((node) => node.children).map((node) => node.label)).toEqual(['f', 'f']);
+    expect(folders.map((node) => node.label)).toEqual(['\\u{85}', '\\x85', 'd']);
+    const siblingFiles = folders.find((node) => node.label === 'd')?.children ?? [];
+    expect(siblingFiles.map((node) => node.label)).toEqual(['\\u{85}', '\\x85']);
+    expect(new Set(siblingFiles.map((node) => node.label)).size).toBe(2);
   });
   test('represents changed and unchanged gitlinks as non-previewable file-like rows', () => {
     const key = Buffer.from('vendor/sub').toString('base64url');
