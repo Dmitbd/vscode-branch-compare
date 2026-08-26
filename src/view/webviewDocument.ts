@@ -342,8 +342,9 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
         : 'показать файлы без изменений';
       toggleUnchanged.title = actionLabel;
       toggleUnchanged.setAttribute('aria-label', actionLabel);
-      toggleUnchanged.disabled = Boolean(currentModel.completeTreeLoading);
-      toggleUnchanged.setAttribute('aria-busy', String(Boolean(currentModel.completeTreeLoading)));
+      const filterLoading = Boolean(currentModel.loading || currentModel.completeTreeLoading);
+      toggleUnchanged.disabled = filterLoading;
+      toggleUnchanged.setAttribute('aria-busy', String(filterLoading));
       eyeOpen.hidden = Boolean(currentModel.showUnchanged);
       eyeClosed.hidden = !currentModel.showUnchanged;
     }

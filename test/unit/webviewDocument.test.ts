@@ -86,6 +86,16 @@ describe('createWebviewDocument', () => {
     expect(html).toContain('hasInitialExpansion = true');
   });
 
+  test('disables the unchanged-files eye during comparison and complete-tree loading', () => {
+    const html = createWebviewDocument({ cspSource: 'test:', nonce: 'nonce' });
+
+    expect(html).toContain(
+      'const filterLoading = Boolean(currentModel.loading || currentModel.completeTreeLoading)',
+    );
+    expect(html).toContain('toggleUnchanged.disabled = filterLoading');
+    expect(html).toContain("toggleUnchanged.setAttribute('aria-busy', String(filterLoading))");
+  });
+
   test('renders untrusted model text through DOM textContent with accessible tree controls', () => {
     const html = createWebviewDocument({ cspSource: 'test:', nonce: 'nonce' });
 
