@@ -15,12 +15,25 @@ export interface StatusCounts {
   readonly deleted: number;
 }
 
+export interface FormattedStatusCounts {
+  readonly added: string;
+  readonly modified: string;
+  readonly deleted: string;
+}
+
+export interface FormattedSummary {
+  readonly files: string;
+  readonly additions: string;
+  readonly deletions: string;
+}
+
 export interface ViewFolderNode {
   readonly id: string;
   readonly kind: 'folder';
   readonly label: string;
   readonly path: string;
   readonly counts: StatusCounts;
+  readonly formattedCounts: FormattedStatusCounts;
   readonly children: readonly ViewTreeNode[];
 }
 
@@ -47,7 +60,9 @@ export interface CompareViewModel {
     readonly compare: string;
   };
   readonly summary?: ChangeSummary;
+  readonly summaryMetrics?: FormattedSummary;
   readonly nodes: readonly ViewTreeNode[];
+  readonly initialExpandedPaths: readonly string[];
   readonly showUnchanged: boolean;
   readonly completeTreeLoading: boolean;
   readonly loading: boolean;
@@ -105,6 +120,7 @@ export function buildTreeModel(input: TreeModelInput): CompareViewModel {
   if (result && showUnchanged && input.completeTree) {
     addUnchangedNodes(fileNodes, changedPaths(result.files), input.completeTree, generation);
   }
+  const nodes = createTree(fileNodes.values());
 
   const model: CompareViewModel = {
     repositoryLabel: input.repository?.label ?? '',
@@ -114,7 +130,9 @@ export function buildTreeModel(input: TreeModelInput): CompareViewModel {
       compare: displayRef(selection?.compareRef ?? input.compareRef, input.refs),
     }),
     summary: result ? Object.freeze({ ...result.summary }) : undefined,
-    nodes: createTree(fileNodes.values()),
+    summaryMetrics: result ? formatSummary(result.summary) : undefined,
+    nodes,
+    initialExpandedPaths: initialExpandedPaths(nodes),
     showUnchanged,
     completeTreeLoading: input.completeTreeLoading ?? false,
     loading: input.loading ?? false,
@@ -235,6 +253,7 @@ function sortFolder(folder: MutableFolder): { readonly nodes: readonly ViewTreeN
         label: child.label,
         path: child.path,
         counts: childTree.counts,
+        formattedCounts: formatCounts(childTree.counts),
         children: freezeNodes(childTree.nodes),
       });
     });
@@ -265,6 +284,29 @@ function addCounts(
 
 function freezeNodes(nodes: readonly ViewTreeNode[]): readonly ViewTreeNode[] {
   return Object.freeze([...nodes]);
+}
+
+function formatSummary(summary: ChangeSummary): FormattedSummary {
+  return Object.freeze({
+    files: formatMetric(summary.files),
+    additions: formatMetric(summary.additions),
+    deletions: formatMetric(summary.deletions),
+  });
+}
+
+function formatCounts(counts: StatusCounts): FormattedStatusCounts {
+  return Object.freeze({
+    added: formatMetric(counts.added),
+    modified: formatMetric(counts.modified),
+    deleted: formatMetric(counts.deleted),
+  });
+}
+
+function initialExpandedPaths(nodes: readonly ViewTreeNode[]): readonly string[] {
+  const firstFolder = nodes.find((node): node is ViewFolderNode => (
+    node.kind === 'folder' && node.children.length > 0
+  ));
+  return Object.freeze(firstFolder ? [firstFolder.path] : []);
 }
 
 function immutableChangedFile(file: ChangedFile): ChangedFile {

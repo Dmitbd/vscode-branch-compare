@@ -121,9 +121,11 @@ describe('buildTreeModel', () => {
 
     expect(model.branches).toEqual({ base: 'origin/develop', compare: 'feature/x' });
     expect(model.summary).toEqual({ files: 4, additions: 14, deletions: 13 });
+    expect(model.summaryMetrics).toEqual({ files: '4', additions: '14', deletions: '13' });
     expect(model.nodes[0]).toMatchObject({
       kind: 'folder', label: 'src', path: 'src',
       counts: { added: 1, modified: 2, deleted: 1 },
+      formattedCounts: { added: '1', modified: '2', deleted: '1' },
     });
     expect(flatten(model.nodes).find((node) => node.path === 'src/renamed.ts')).toMatchObject({
       status: 'modified', additions: '1', deletions: '1',
@@ -151,6 +153,30 @@ describe('buildTreeModel', () => {
     expect(flatten(model.nodes)[0]).toMatchObject({
       binary: true, additions: '—', deletions: '—',
     });
+  });
+
+  test('uses one compact formatter for 10,000-file summary and folder counts', () => {
+    const files = Array.from({ length: 10_000 }, (_, index) => (
+      changed('added', undefined, `src/file-${index}.ts`, 1, 0)
+    ));
+
+    const model = buildTreeModel(modelInput(files));
+
+    expect(model.summaryMetrics).toEqual({ files: '10k', additions: '10k', deletions: '0' });
+    expect(model.nodes[0]).toMatchObject({
+      kind: 'folder',
+      counts: { added: 10_000, modified: 0, deleted: 0 },
+      formattedCounts: { added: '10k', modified: '0', deleted: '0' },
+    });
+  });
+
+  test('suggests only the first non-empty top-level folder for initial expansion', () => {
+    const model = buildTreeModel(modelInput([
+      changed('modified', 'apps/web/src/deep.ts', 'apps/web/src/deep.ts', 1, 1),
+      changed('modified', 'docs/guide.md', 'docs/guide.md', 1, 1),
+    ]));
+
+    expect(model.initialExpandedPaths).toEqual(['apps']);
   });
 
   test('unions changed files with neutral unchanged paths from both complete trees', () => {

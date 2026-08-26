@@ -25,7 +25,7 @@ describe('createWebviewDocument', () => {
     expect(html).not.toMatch(/#[0-9a-f]{3,8}/i);
   });
 
-  test('uses VS Code theme tokens, fixed metrics, and currentColor SVG icons', () => {
+  test('uses VS Code theme tokens, fixed right metrics, and currentColor SVG icons', () => {
     const html = createWebviewDocument({ cspSource: 'test:', nonce: 'nonce' });
 
     expect(html).toContain('var(--vscode-foreground)');
@@ -35,12 +35,12 @@ describe('createWebviewDocument', () => {
     expect(html).toContain('var(--vscode-gitDecoration-addedResourceForeground)');
     expect(html).toContain('var(--vscode-gitDecoration-modifiedResourceForeground)');
     expect(html).toContain('var(--vscode-gitDecoration-deletedResourceForeground)');
-    expect(html).toContain('--metric-columns: minmax(0, 1fr) repeat(3, 6ch) 6ch 6ch');
-    expect(html).toMatch(/\.metric-head,\s*\.tree-row\s*{[^}]*grid-template-columns: var\(--metric-columns\)/s);
+    expect(html).toContain('--metric-columns: minmax(0, 1fr) 16px repeat(3, 6ch)');
+    expect(html).toMatch(/\.tree-row\s*{[^}]*grid-template-columns: var\(--metric-columns\)/s);
     expect(html).toContain('fill="currentColor"');
-    expect(html).toContain('title="Added"');
-    expect(html).toContain('title="Modified"');
-    expect(html).toContain('title="Deleted"');
+    expect(html).toContain("return 'Added'");
+    expect(html).toContain("return 'Modified'");
+    expect(html).toContain("return 'Deleted'");
   });
 
   test('places BRANCHES before aligned BASE and COMPARE label, colon, and value columns', () => {
@@ -58,43 +58,45 @@ describe('createWebviewDocument', () => {
     expect(html).toMatch(/<span class="branch-label">COMPARE<\/span>\s*<span class="branch-colon" aria-hidden="true">:<\/span>/);
   });
 
-  test('formats signed file metrics without clipping fixed folder columns', () => {
+  test('renders a no-wrap summary with a file icon and separately colored metrics', () => {
     const html = createWebviewDocument({ cspSource: 'test:', nonce: 'nonce' });
 
-    expect(html).toContain("appendMetric(row, formatLineMetric(node.additions, '+'), lineMetricClass(node.additions, 'addition'))");
-    expect(html).toContain("appendMetric(row, formatLineMetric(node.deletions, '−'), lineMetricClass(node.deletions, 'deletion'))");
-    expect(html).toContain("if (!value || value === '0')");
-    expect(html).toContain("return value === '—' ? '—' : sign + value");
-    expect(html).not.toContain('text-overflow: clip');
+    expect(html).toMatch(/\.summary\s*{[^}]*white-space: nowrap/s);
+    expect(html).toContain("summary.append(createIcon('file', 'summary-icon'))");
+    expect(html).toContain("appendSummaryMetric(currentModel.summaryMetrics.files, 'summary-file-count'");
+    expect(html).toContain("appendSummaryMetric('+' + currentModel.summaryMetrics.additions, 'addition'");
+    expect(html).toContain("appendSummaryMetric('−' + currentModel.summaryMetrics.deletions, 'deletion'");
   });
 
-  test('formats non-zero folder counters with status-specific signs and hides zeroes', () => {
+  test('renders folder file-count icon and compact status metrics without folder circles', () => {
     const html = createWebviewDocument({ cspSource: 'test:', nonce: 'nonce' });
 
-    expect(html).toContain("appendMetric(row, formatFolderMetric(counts.added, '+'), 'status-added', 'Added')");
-    expect(html).toContain("appendMetric(row, formatFolderMetric(counts.modified, ''), 'status-modified', 'Modified')");
-    expect(html).toContain("appendMetric(row, formatFolderMetric(counts.deleted, '−'), 'status-deleted', 'Deleted')");
-    expect(html).toMatch(/function formatFolderMetric\(value, sign\) \{\s*if \(!value \|\| value === '0'\) \{\s*return '';\s*\}\s*return sign \+ String\(value\);\s*\}/);
+    expect(html).toContain("appendFileCountIcon(row)");
+    expect(html).toContain("appendFolderMetrics(row, node.counts, node.formattedCounts)");
+    expect(html).toContain("signedMetric(formatted.added, '+')");
+    expect(html).toContain("signedMetric(formatted.modified, '')");
+    expect(html).toContain("signedMetric(formatted.deleted, '−')");
+    expect(html).not.toContain("status === 'added' ? '●'");
   });
 
-  test('defers one-time default expansion until the first completed non-empty tree', () => {
+  test('expands only model-approved top-level paths and lazily mounts descendants', () => {
     const html = createWebviewDocument({ cspSource: 'test:', nonce: 'nonce' });
 
-    expect(html).toContain(
-      'if (!hasInitialExpansion && !currentModel.loading && !currentModel.completeTreeLoading && currentModel.nodes.length > 0)',
-    );
-    expect(html).toContain('collectFolderPaths(currentModel.nodes, expandedPaths)');
+    expect(html).toContain('currentModel.initialExpandedPaths.forEach(function (path)');
     expect(html).toContain('hasInitialExpansion = true');
+    expect(html).not.toContain('collectFolderPaths');
+    expect(html).toMatch(/if \(expanded\) \{[\s\S]*appendNodes\(node\.children, group/s);
   });
 
-  test('disables the unchanged-files eye during comparison and complete-tree loading', () => {
+  test('marks loading regions busy, subdues stale content, and disables unsafe controls', () => {
     const html = createWebviewDocument({ cspSource: 'test:', nonce: 'nonce' });
 
-    expect(html).toContain(
-      'const filterLoading = Boolean(currentModel.loading || currentModel.completeTreeLoading)',
-    );
-    expect(html).toContain('toggleUnchanged.disabled = filterLoading');
-    expect(html).toContain("toggleUnchanged.setAttribute('aria-busy', String(filterLoading))");
+    expect(html).toContain("document.body.classList.toggle('is-loading', busy)");
+    expect(html).toContain("branchesSection.setAttribute('aria-busy', String(busy))");
+    expect(html).toContain("tree.setAttribute('aria-busy', String(busy))");
+    expect(html).toContain('branchBase.disabled = busy');
+    expect(html).toContain('row.disabled = isBusy()');
+    expect(html).toMatch(/\.is-loading \.tree\s*{[^}]*opacity/s);
   });
 
   test('renders untrusted model text through DOM textContent with accessible tree controls', () => {
@@ -108,8 +110,34 @@ describe('createWebviewDocument', () => {
     expect(html).toContain("event.key === 'ArrowLeft'");
     expect(html).toContain("event.key === 'ArrowRight'");
     expect(html).toContain("event.key === 'Enter'");
+    expect(html).toContain("event.key === 'ArrowUp'");
+    expect(html).toContain("event.key === 'ArrowDown'");
+    expect(html).toContain("event.key === 'Home'");
+    expect(html).toContain("event.key === 'End'");
+    expect(html).toContain('row.tabIndex = -1');
+    expect(html).toContain('setRovingFocus');
+    expect(html).toContain("toggleUnchanged.setAttribute('aria-pressed'");
+    expect(html).toContain("branchBase.setAttribute('aria-label', 'BASE: '");
+    expect(html).toContain("metric.setAttribute('aria-label', ariaLabel)");
     expect(html).toContain('const expandedPaths = new Set()');
     expect(html).toContain('expandedPaths.clear()');
+  });
+
+  test('places a status marker and file icon on the left and line metrics on the right', () => {
+    const html = createWebviewDocument({ cspSource: 'test:', nonce: 'nonce' });
+    const fileRenderer = html.match(
+      /function appendFile\(node, parent, level, parentPath\) \{([\s\S]*?)\n    \}\n\n    function createRow/,
+    )?.[1] ?? '';
+
+    expect(fileRenderer).toContain('createFileLabel(node)');
+    expect(fileRenderer).toContain("appendMetric(row, '', '', '', '')");
+    expect(fileRenderer).toContain("formatLineMetric(node.additions, '+')");
+    expect(fileRenderer).toContain("formatLineMetric(node.deletions, '−')");
+    expect(html).toContain('createStatusMarker(node.status)');
+    expect(html).toContain("createIcon('file', 'tree-icon')");
+    expect(html).toContain("marker.title = statusName(status)");
+    expect(html).toContain("metric.title = title");
+    expect(html).toContain("node.binary ? 'Line changes unavailable' : fileAriaLabel(node)");
   });
 
   test('keeps collapse-all local and toggles expansion state symmetrically', () => {
@@ -118,7 +146,7 @@ describe('createWebviewDocument', () => {
       /getElementById\('collapse-all'\)\.addEventListener\('click', function \(\) \{([\s\S]*?)\n    \}\);/,
     )?.[1];
     const toggleFunction = html.match(
-      /function toggleFolder\(path\) \{([\s\S]*?)\n    \}\n\n    function collectFolderPaths/,
+      /function toggleFolder\(path\) \{([\s\S]*?)\n    \}\n\n    function visibleRows/,
     )?.[1];
 
     expect(collapseHandler).toContain('expandedPaths.clear()');
