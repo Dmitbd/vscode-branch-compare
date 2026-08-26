@@ -14,11 +14,16 @@ export function parseNumStat(output: Buffer): NumStatRecord[] {
   for (let index = 0; index < fields.length;) {
     const header = fields[index++];
     if (header === undefined) throw invalid();
-    const match = /^([^\t]+)\t([^\t]+)\t(.*)$/.exec(header);
-    if (!match) throw invalid();
-    const lineChanges = parseCounts(match[1], match[2]);
-    if (match[3] !== '') {
-      records.push({ oldPath: match[3], newPath: match[3], lineChanges });
+    const firstTab = header.indexOf('\t');
+    const secondTab = firstTab < 0 ? -1 : header.indexOf('\t', firstTab + 1);
+    if (firstTab <= 0 || secondTab < 0) throw invalid();
+    const lineChanges = parseCounts(
+      header.slice(0, firstTab),
+      header.slice(firstTab + 1, secondTab),
+    );
+    const path = header.slice(secondTab + 1);
+    if (path !== '') {
+      records.push({ oldPath: path, newPath: path, lineChanges });
       continue;
     }
     const oldPath = fields[index++];

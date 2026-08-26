@@ -3,7 +3,7 @@ import type { ChangedFile, GitRef } from '../domain/model';
 import { GitOutputError } from './GitOutputError';
 import { GitCommandError, GitCommandRunner, type CommandRunner } from './commandRunner';
 import { parseNameStatus } from './parseNameStatus';
-import { parseNumStat } from './parseNumStat';
+import { parseNumStat, type NumStatRecord } from './parseNumStat';
 import { parsePathList } from './parsePathList';
 import { parseRefs } from './parseRefs';
 
@@ -35,7 +35,7 @@ export class DefaultGitAdapter implements GitAdapter {
   public constructor(private readonly runner: CommandRunner = new GitCommandRunner()) {}
 
   public async listRefs(root: string, token?: CancellationToken): Promise<readonly GitRef[]> {
-    const output = await this.runner.run(root, [
+    const output = await this.runLocal(root, [
       'for-each-ref',
       '--format=%(refname)%00%(objectname)%00%(symref)',
       'refs/heads',
@@ -54,7 +54,7 @@ export class DefaultGitAdapter implements GitAdapter {
     token?: CancellationToken,
   ): Promise<string | undefined> {
     try {
-      const output = await this.runner.run(
+      const output = await this.runLocal(
         root,
         ['symbolic-ref', '--quiet', `refs/remotes/${remote}/HEAD`],
         token,
@@ -74,7 +74,7 @@ export class DefaultGitAdapter implements GitAdapter {
   }
 
   public async resolveCommit(root: string, ref: string, token?: CancellationToken): Promise<string> {
-    const output = await this.runner.run(root, ['rev-parse', '--verify', `${ref}^{commit}`], token);
+    const output = await this.runLocal(root, ['rev-parse', '--verify', `${ref}^{commit}`], token);
     return parseSha(output);
   }
 
@@ -85,7 +85,7 @@ export class DefaultGitAdapter implements GitAdapter {
     token?: CancellationToken,
   ): Promise<string | undefined> {
     try {
-      const output = await this.runner.run(
+      const output = await this.runLocal(
         root,
         ['merge-base', '--', baseSha, compareSha],
         token,
@@ -105,9 +105,14 @@ export class DefaultGitAdapter implements GitAdapter {
     toSha: string,
     token?: CancellationToken,
   ): Promise<readonly ChangedFile[]> {
+    validateSha(fromSha);
+    validateSha(toSha);
     const [statusOutput, numStatOutput] = await Promise.all([
-      this.runner.run(root, [
+      this.runLocal(root, [
+        `--attr-source=${fromSha}`,
         'diff',
+        '--no-ext-diff',
+        '--no-textconv',
         '--name-status',
         '-z',
         '--find-renames',
@@ -115,8 +120,11 @@ export class DefaultGitAdapter implements GitAdapter {
         toSha,
         '--',
       ], token),
-      this.runner.run(root, [
+      this.runLocal(root, [
+        `--attr-source=${fromSha}`,
         'diff',
+        '--no-ext-diff',
+        '--no-textconv',
         '--numstat',
         '-z',
         '--find-renames',
@@ -125,14 +133,7 @@ export class DefaultGitAdapter implements GitAdapter {
         '--',
       ], token),
     ]);
-    const stats = parseNumStat(numStatOutput);
-    return parseNameStatus(statusOutput).map((file) => {
-      const stat = stats.find((candidate) => file.status === 'renamed'
-        ? candidate.oldPath === file.oldPath && candidate.newPath === file.newPath
-        : candidate.newPath === (file.newPath ?? file.oldPath));
-      if (!stat) throw new GitOutputError('Missing numstat record for changed file.');
-      return { ...file, lineChanges: Object.freeze({ ...stat.lineChanges }) };
-    });
+    return attachLineChanges(parseNameStatus(statusOutput), parseNumStat(numStatOutput));
   }
 
   public async listTreePaths(
@@ -141,7 +142,7 @@ export class DefaultGitAdapter implements GitAdapter {
     token?: CancellationToken,
   ): Promise<readonly string[]> {
     validateSha(commit);
-    return parsePathList(await this.runner.run(
+    return parsePathList(await this.runLocal(
       root,
       ['ls-tree', '-r', '--name-only', '-z', commit, '--'],
       token,
@@ -154,7 +155,8 @@ export class DefaultGitAdapter implements GitAdapter {
     path: string,
     token?: CancellationToken,
   ): Promise<Buffer> {
-    return this.runner.run(root, ['show', `${commit}:${path}`], token);
+    validateSha(commit);
+    return this.runLocal(root, ['show', `${commit}:${path}`], token);
   }
 
   public async getBlobSize(
@@ -163,7 +165,8 @@ export class DefaultGitAdapter implements GitAdapter {
     path: string,
     token?: CancellationToken,
   ): Promise<number> {
-    const output = await this.runner.run(root, ['cat-file', '-s', `${commit}:${path}`], token);
+    validateSha(commit);
+    const output = await this.runLocal(root, ['cat-file', '-s', `${commit}:${path}`], token);
     const value = output.toString('utf8').trim();
     if (!/^(?:0|[1-9][0-9]*)$/.test(value)) {
       throw new GitOutputError('Invalid blob size output.');
@@ -188,6 +191,70 @@ export class DefaultGitAdapter implements GitAdapter {
       `+refs/heads/*:refs/remotes/${remote}/*`,
     ], token);
   }
+
+  private runLocal(
+    root: string,
+    args: readonly string[],
+    token?: CancellationToken,
+  ): Promise<Buffer> {
+    return this.runner.run(root, ['--no-lazy-fetch', ...args], token);
+  }
+}
+
+export function attachLineChanges(
+  files: readonly ChangedFile[],
+  stats: readonly NumStatRecord[],
+): readonly ChangedFile[] {
+  const statsByPathPair = new Map<string, NumStatRecord[]>();
+  for (const stat of stats) {
+    const key = pathPairKey(stat.oldPath, stat.newPath);
+    const bucket = statsByPathPair.get(key);
+    if (bucket) {
+      bucket.push(stat);
+    } else {
+      statsByPathPair.set(key, [stat]);
+    }
+  }
+
+  const joined = files.map((file) => {
+    const [oldPath, newPath] = statPaths(file);
+    const key = pathPairKey(oldPath, newPath);
+    const bucket = statsByPathPair.get(key);
+    const stat = bucket?.pop();
+    if (!stat) {
+      throw new GitOutputError('Missing numstat record for changed file.');
+    }
+    if (bucket.length === 0) {
+      statsByPathPair.delete(key);
+    }
+    return Object.freeze({
+      ...file,
+      lineChanges: Object.freeze({ ...stat.lineChanges }),
+    });
+  });
+
+  if (statsByPathPair.size > 0) {
+    throw new GitOutputError('Unexpected numstat record for changed file.');
+  }
+  return joined;
+}
+
+function statPaths(file: ChangedFile): readonly [string, string] {
+  if (file.status === 'renamed') {
+    if (!file.oldPath || !file.newPath) {
+      throw new GitOutputError('Missing path for renamed file.');
+    }
+    return [file.oldPath, file.newPath];
+  }
+  const path = file.newPath ?? file.oldPath;
+  if (!path) {
+    throw new GitOutputError('Missing path for changed file.');
+  }
+  return [path, path];
+}
+
+function pathPairKey(oldPath: string, newPath: string): string {
+  return `${oldPath}\0${newPath}`;
 }
 
 function parseSha(output: Buffer): string {

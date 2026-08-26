@@ -64,11 +64,16 @@ describe('read-only workflow invariants', () => {
 
     await controller.toggleUnchanged();
     expect(await invariantSnapshot(repo)).toEqual(before);
-    expect(gitCommands.filter((args) => args[0] === 'ls-tree')).toHaveLength(2);
-    expect(gitCommands.some((args) => args[0] === 'fetch')).toBe(false);
-    expect(gitCommands.some((args) => args[0] === 'checkout' || args[0] === 'switch')).toBe(false);
+    expect(gitCommands.filter((args) => args.includes('ls-tree'))).toHaveLength(2);
+    expect(gitCommands.every((args) => args[0] === '--no-lazy-fetch')).toBe(true);
+    expect(gitCommands.some((args) => args.includes('fetch'))).toBe(false);
+    expect(gitCommands.some((args) => args.includes('checkout') || args.includes('switch'))).toBe(false);
 
-    await adapter.listChangedFiles(repo.root, 'refs/heads/main', 'refs/heads/feature/x');
+    await adapter.listChangedFiles(
+      repo.root,
+      await repo.revParse('refs/heads/main'),
+      await repo.revParse('refs/heads/feature/x'),
+    );
     expect(await invariantSnapshot(repo)).toEqual(before);
 
     const unchangedTarget: DiffTarget = { kind: 'unchanged', path: 'base.txt' };

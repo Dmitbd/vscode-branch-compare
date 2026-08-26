@@ -1,5 +1,8 @@
-import { rename } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { access, chmod, mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { GitCommandError } from '../../src/git/commandRunner';
 import { DefaultGitAdapter } from '../../src/git/gitAdapter';
@@ -187,4 +190,86 @@ describe('DefaultGitAdapter', () => {
       '+refs/heads/*:refs/remotes/origin/*',
     ], undefined);
   });
+
+  test('does not invoke a promisor remote for missing objects during local reads', async () => {
+    const source = await GitRepo.create();
+    const cloneParent = await mkdtemp(path.join(tmpdir(), 'branch-compare-partial-'));
+    const cloneRoot = path.join(cloneParent, 'clone');
+    try {
+      await source.write('large.txt', `${'base '.repeat(8_192)}\n`);
+      const base = await source.commit('partial base');
+      await source.write('large.txt', `${'feature '.repeat(8_192)}\n`);
+      const feature = await source.commit('partial feature');
+      await source.git(['config', 'uploadpack.allowFilter', 'true']);
+      await git(cloneParent, [
+        'clone', '--filter=blob:none', '--no-checkout', `file://${source.root}`, cloneRoot,
+      ]);
+
+      const sentinel = path.join(cloneParent, 'upload-pack-invoked');
+      const uploadPack = path.join(cloneParent, 'upload-pack-sentinel.sh');
+      await writeFile(uploadPack, `#!/bin/sh\ntouch "${sentinel}"\nexit 1\n`);
+      await chmod(uploadPack, 0o755);
+      await git(cloneRoot, ['config', 'remote.origin.uploadpack', uploadPack]);
+      const partialAdapter = new DefaultGitAdapter();
+
+      await expect(partialAdapter.listChangedFiles(cloneRoot, base, feature)).rejects.toBeDefined();
+      await expect(partialAdapter.getBlobSize(cloneRoot, feature, 'large.txt')).rejects.toBeDefined();
+      await expect(partialAdapter.readBlob(cloneRoot, feature, 'large.txt')).rejects.toBeDefined();
+      await expect(access(sentinel)).rejects.toBeDefined();
+
+      await expect(partialAdapter.fetch(cloneRoot, 'origin')).rejects.toBeDefined();
+      await expect(access(sentinel)).resolves.toBeUndefined();
+    } finally {
+      await Promise.all([source.dispose(), rm(cloneParent, { recursive: true, force: true })]);
+    }
+  });
+
+  test('uses committed attributes and never executes configured diff helpers', async () => {
+    const hermeticRepo = await GitRepo.create();
+    try {
+      await hermeticRepo.write('.gitattributes', '*.special binary\n*.txt diff=sentinel\n');
+      await hermeticRepo.write('data.special', 'base\n');
+      await hermeticRepo.write('notes.txt', 'base\n');
+      const base = await hermeticRepo.commit('hermetic base');
+      await hermeticRepo.git(['switch', '-c', 'feature/hermetic']);
+      await hermeticRepo.write('data.special', 'feature\n');
+      await hermeticRepo.write('notes.txt', 'feature\n');
+      const feature = await hermeticRepo.commit('hermetic feature');
+
+      const textconvSentinel = path.join(hermeticRepo.root, 'textconv-invoked');
+      const externalSentinel = path.join(hermeticRepo.root, 'external-diff-invoked');
+      const textconv = path.join(hermeticRepo.root, 'textconv.sh');
+      const externalDiff = path.join(hermeticRepo.root, 'external-diff.sh');
+      await writeFile(textconv, `#!/bin/sh\ntouch "${textconvSentinel}"\ncat "$1"\n`);
+      await writeFile(externalDiff, `#!/bin/sh\ntouch "${externalSentinel}"\nexit 0\n`);
+      await Promise.all([chmod(textconv, 0o755), chmod(externalDiff, 0o755)]);
+      await hermeticRepo.git(['config', 'diff.sentinel.textconv', textconv]);
+      await hermeticRepo.git(['config', 'diff.external', externalDiff]);
+      await hermeticRepo.write('.gitattributes', '*.special text\n*.txt diff=sentinel\n');
+
+      const files = await new DefaultGitAdapter().listChangedFiles(hermeticRepo.root, base, feature);
+
+      expect(files).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          newPath: 'data.special',
+          lineChanges: { additions: null, deletions: null },
+        }),
+        expect.objectContaining({
+          newPath: 'notes.txt',
+          lineChanges: { additions: 1, deletions: 1 },
+        }),
+      ]));
+      await expect(access(textconvSentinel)).rejects.toBeDefined();
+      await expect(access(externalSentinel)).rejects.toBeDefined();
+    } finally {
+      await hermeticRepo.dispose();
+    }
+  });
 });
+
+const execFileAsync = promisify(execFile);
+
+async function git(cwd: string, args: readonly string[]): Promise<Buffer> {
+  const result = await execFileAsync('git', [...args], { cwd, encoding: 'buffer' });
+  return result.stdout as Buffer;
+}

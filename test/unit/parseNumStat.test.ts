@@ -14,6 +14,26 @@ describe('parseNumStat', () => {
     ]);
   });
 
+  test('treats tabs and line breaks inside normal and renamed paths as opaque filename bytes', () => {
+    const output = Buffer.from(
+      '1\t2\tsrc/line\nbreak\tand-tab.ts\0'
+      + '3\t4\t\0old\nname\t.ts\0new\tname\n.ts\0',
+    );
+
+    expect(parseNumStat(output)).toEqual([
+      {
+        oldPath: 'src/line\nbreak\tand-tab.ts',
+        newPath: 'src/line\nbreak\tand-tab.ts',
+        lineChanges: { additions: 1, deletions: 2 },
+      },
+      {
+        oldPath: 'old\nname\t.ts',
+        newPath: 'new\tname\n.ts',
+        lineChanges: { additions: 3, deletions: 4 },
+      },
+    ]);
+  });
+
   test.each([
     '1\t2',
     'x\t2\tfile.ts\0',
