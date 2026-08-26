@@ -131,15 +131,19 @@ describe('createWebviewDocument', () => {
     expect(html).toContain('setRovingFocus');
     expect(html).toContain("toggleUnchanged.setAttribute('aria-pressed'");
     expect(html).toContain("branchBase.setAttribute('aria-label', 'BASE: '");
+    expect(html).toContain("repositoryButton.setAttribute('aria-label', 'REPOSITORY: '");
     expect(html).toContain("metric.setAttribute('aria-label', ariaLabel)");
     expect(html).toContain('const expandedPaths = new Set()');
     expect(html).toContain('expandedPaths.clear()');
+    expect(html).toContain('row.dataset.nodeId = node.id');
+    expect(html).toContain('row.dataset.parentNodeId = parentNodeId');
+    expect(html).not.toContain('row.dataset.parentPath');
   });
 
   test('places a status marker and file icon on the left and line metrics on the right', () => {
     const html = createWebviewDocument({ cspSource: 'test:', nonce: 'nonce' });
     const fileRenderer = html.match(
-      /function appendFile\(node, parent, level, parentPath\) \{([\s\S]*?)\n    \}\n\n    function createRow/,
+      /function appendFile\(node, parent, level, parentNodeId\) \{([\s\S]*?)\n    \}\n\n    function createRow/,
     )?.[1] ?? '';
 
     expect(fileRenderer).toContain('createFileLabel(node)');
@@ -159,7 +163,7 @@ describe('createWebviewDocument', () => {
       /getElementById\('collapse-all'\)\.addEventListener\('click', function \(\) \{([\s\S]*?)\n    \}\);/,
     )?.[1];
     const toggleFunction = html.match(
-      /function toggleFolder\(path\) \{([\s\S]*?)\n    \}\n\n    function visibleRows/,
+      /function toggleFolder\(path, nodeId\) \{([\s\S]*?)\n    \}\n\n    function visibleRows/,
     )?.[1];
 
     expect(collapseHandler).toContain('expandedPaths.clear()');
@@ -167,7 +171,7 @@ describe('createWebviewDocument', () => {
     expect(collapseHandler).not.toContain('vscode.postMessage');
     expect(toggleFunction).toContain('expandedPaths.delete(path)');
     expect(toggleFunction).toContain('expandedPaths.add(path)');
-    expect(toggleFunction).toContain('renderTree(path)');
+    expect(toggleFunction).toContain('renderTree(nodeId)');
   });
 
   test('renders a tree-only error inline and retries only the complete-tree intent', () => {
@@ -197,7 +201,7 @@ describe('createWebviewDocument', () => {
   test('shows the active repository only for a multi-repository workspace', () => {
     const html = createWebviewDocument({ cspSource: 'test:', nonce: 'nonce' });
 
-    expect(html).toContain('repositoryButton.textContent = currentModel.repositoryLabel');
+    expect(html).toContain('repositoryButton.textContent = repositoryLabel');
     expect(html).toContain('repositoryButton.hidden = !currentModel.showRepositorySelector');
   });
 });

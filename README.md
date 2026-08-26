@@ -73,6 +73,8 @@ Branch Compare Viewer provides comparison and visual inspection only. It has no 
 
 Both diff documents use the extension's virtual `branch-compare` scheme and have no save provider.
 
+Machine-readable comparison disables external diff and text-conversion helpers and reads committed `.gitattributes` from the merge-base snapshot, so dirty working-tree attributes do not affect the result. Git's normal repository-local `.git/info/attributes` and user or system attribute sources remain in effect.
+
 ## Limits
 
 - Binary blobs containing a NUL byte are not opened as text.

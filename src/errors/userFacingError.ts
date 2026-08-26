@@ -28,13 +28,18 @@ export function toUserFacingError(error: unknown): UserFacingError {
   if (error instanceof BlobTooLargeError) {
     return new UserFacingError('This file exceeds the 10 MiB text preview limit', error);
   }
-  if (error instanceof GitCommandError && /(?:could not fetch|promisor|missing object|bad object)/i.test(error.stderr)) {
+  if (isMissingGitObjectError(error)) {
     return new UserFacingError(
       'Required Git objects are unavailable locally; run Fetch and try again',
       error,
     );
   }
   return new UserFacingError('Unable to compare branches', error);
+}
+
+export function isMissingGitObjectError(error: unknown): error is GitCommandError {
+  return error instanceof GitCommandError
+    && /(?:could not (?:fetch|get object info)|promisor|missing object|bad object)/i.test(error.stderr);
 }
 
 export function technicalErrorText(error: unknown): string {

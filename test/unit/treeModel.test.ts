@@ -263,6 +263,24 @@ describe('buildTreeModel', () => {
     expect(nodes.find((node) => node.path === 'src/old.ts')).toBeUndefined();
   });
 
+  test('keeps file-to-directory transitions as distinct tree nodes with unique ids', () => {
+    const model = buildTreeModel(modelInput([
+      changed('deleted', 'config', undefined, 0, 1),
+    ], {
+      showUnchanged: true,
+      completeTree: {
+        mergeBasePaths: ['config'],
+        comparePaths: ['config/default.json'],
+      },
+    }));
+
+    expect(model.nodes.map((node) => ({ kind: node.kind, path: node.path, id: node.id }))).toEqual([
+      { kind: 'folder', path: 'config', id: 'folder:config' },
+      { kind: 'file', path: 'config', id: 'changed:config' },
+    ]);
+    expect(new Set(model.nodes.map((node) => node.id)).size).toBe(2);
+  });
+
   test('keeps deleted files visible without a complete tree', () => {
     const model = buildTreeModel(modelInput([
       changed('deleted', 'src/removed.ts', undefined, 0, 8),

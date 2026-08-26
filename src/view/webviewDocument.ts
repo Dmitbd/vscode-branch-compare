@@ -314,8 +314,8 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
     let hasInitialExpansion = false;
     let currentTreeIdentity = '';
     let currentModel;
-    let rovingPath = '';
-    let restoreFocusPath = '';
+    let rovingNodeId = '';
+    let restoreFocusNodeId = '';
 
     const branchesSection = document.getElementById('branches-section');
     const filesSection = document.getElementById('files-section');
@@ -362,10 +362,9 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
     });
 
     function render() {
-      repositoryButton.textContent = currentModel.repositoryLabel;
-      if (!repositoryButton.textContent) {
-        repositoryButton.textContent = 'выбрать репозиторий';
-      }
+      const repositoryLabel = currentModel.repositoryLabel || 'выбрать репозиторий';
+      repositoryButton.textContent = repositoryLabel;
+      repositoryButton.setAttribute('aria-label', 'REPOSITORY: ' + repositoryLabel + '. Выбрать репозиторий');
       repositoryButton.hidden = !currentModel.showRepositorySelector;
 
       const baseName = currentModel.branches.base || '—';
@@ -381,7 +380,7 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
         currentTreeIdentity = nextTreeIdentity;
         expandedPaths.clear();
         hasInitialExpansion = false;
-        rovingPath = '';
+        rovingNodeId = '';
       }
 
       renderBusyState();
@@ -462,61 +461,61 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
       message.textContent = status;
     }
 
-    function renderTree(focusPath) {
+    function renderTree(focusNodeId) {
       const active = document.activeElement && document.activeElement.closest
         ? document.activeElement.closest('[role="treeitem"]')
         : null;
-      restoreFocusPath = focusPath || (active && active.dataset.path) || rovingPath;
-      const shouldRestoreFocus = Boolean(focusPath || active);
+      restoreFocusNodeId = focusNodeId || (active && active.dataset.nodeId) || rovingNodeId;
+      const shouldRestoreFocus = Boolean(focusNodeId || active);
       tree.replaceChildren();
       if (!currentModel) {
         return;
       }
       appendNodes(currentModel.nodes, tree, 1, '');
-      ensureRovingFocus(restoreFocusPath, shouldRestoreFocus);
+      ensureRovingFocus(restoreFocusNodeId, shouldRestoreFocus);
     }
 
-    function appendNodes(nodes, parent, level, parentPath) {
+    function appendNodes(nodes, parent, level, parentNodeId) {
       nodes.forEach(function (node) {
         if (node.kind === 'folder') {
-          appendFolder(node, parent, level, parentPath);
+          appendFolder(node, parent, level, parentNodeId);
         } else {
-          appendFile(node, parent, level, parentPath);
+          appendFile(node, parent, level, parentNodeId);
         }
       });
     }
 
-    function appendFolder(node, parent, level, parentPath) {
+    function appendFolder(node, parent, level, parentNodeId) {
       const expanded = expandedPaths.has(node.path);
-      const row = createRow(node, level, parentPath);
+      const row = createRow(node, level, parentNodeId);
       row.setAttribute('aria-expanded', String(expanded));
       row.setAttribute('aria-label', folderAriaLabel(node, expanded));
       row.append(createFolderLabel(node));
       appendFileCountIcon(row);
       appendFolderMetrics(row, node.counts, node.formattedCounts);
-      row.addEventListener('click', function () { toggleFolder(node.path); });
+      row.addEventListener('click', function () { toggleFolder(node.path, node.id); });
       row.addEventListener('keydown', function (event) {
         if (handleLinearNavigation(event, row)) {
           return;
         }
         if (event.key === 'Enter') {
           event.preventDefault();
-          toggleFolder(node.path);
+          toggleFolder(node.path, node.id);
         } else if (event.key === 'ArrowRight') {
           event.preventDefault();
           if (!expandedPaths.has(node.path)) {
             expandedPaths.add(node.path);
-            renderTree(node.path);
+            renderTree(node.id);
           } else {
-            focusFirstChild(node.path);
+            focusFirstChild(node.id);
           }
         } else if (event.key === 'ArrowLeft') {
           event.preventDefault();
           if (expandedPaths.has(node.path)) {
             expandedPaths.delete(node.path);
-            renderTree(node.path);
-          } else if (parentPath) {
-            setRovingFocus(parentPath, true);
+            renderTree(node.id);
+          } else if (parentNodeId) {
+            setRovingFocus(parentNodeId, true);
           }
         }
       });
@@ -526,13 +525,13 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
         const group = document.createElement('div');
         group.className = 'tree-group';
         group.setAttribute('role', 'group');
-        appendNodes(node.children, group, level + 1, node.path);
+        appendNodes(node.children, group, level + 1, node.id);
         parent.append(group);
       }
     }
 
-    function appendFile(node, parent, level, parentPath) {
-      const row = createRow(node, level, parentPath);
+    function appendFile(node, parent, level, parentNodeId) {
+      const row = createRow(node, level, parentNodeId);
       row.append(createFileLabel(node));
       appendMetric(row, '', '', '', '');
       if (node.binary) {
@@ -555,26 +554,26 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
         if (event.key === 'Enter') {
           event.preventDefault();
           open();
-        } else if (event.key === 'ArrowLeft' && parentPath) {
+        } else if (event.key === 'ArrowLeft' && parentNodeId) {
           event.preventDefault();
-          setRovingFocus(parentPath, true);
+          setRovingFocus(parentNodeId, true);
         }
       });
       parent.append(row);
     }
 
-    function createRow(node, level, parentPath) {
+    function createRow(node, level, parentNodeId) {
       const row = document.createElement('button');
       row.type = 'button';
       row.className = 'tree-row tree-level-' + String(Math.min(level - 1, 20));
-      row.dataset.path = node.path;
-      row.dataset.parentPath = parentPath;
+      row.dataset.nodeId = node.id;
+      row.dataset.parentNodeId = parentNodeId;
       row.setAttribute('role', 'treeitem');
       row.setAttribute('aria-level', String(level));
       row.tabIndex = -1;
       row.disabled = isBusy();
       row.addEventListener('focus', function () {
-        setRovingFocus(node.path, false);
+        setRovingFocus(node.id, false);
       });
       return row;
     }
@@ -702,13 +701,13 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
       return 'Unchanged';
     }
 
-    function toggleFolder(path) {
+    function toggleFolder(path, nodeId) {
       if (expandedPaths.has(path)) {
         expandedPaths.delete(path);
       } else {
         expandedPaths.add(path);
       }
-      renderTree(path);
+      renderTree(nodeId);
     }
 
     function visibleRows() {
@@ -732,36 +731,36 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
       }
       event.preventDefault();
       if (target) {
-        setRovingFocus(target.dataset.path, true);
+        setRovingFocus(target.dataset.nodeId, true);
       }
       return true;
     }
 
-    function focusFirstChild(parentPath) {
+    function focusFirstChild(parentNodeId) {
       const target = visibleRows().find(function (row) {
-        return row.dataset.parentPath === parentPath;
+        return row.dataset.parentNodeId === parentNodeId;
       });
       if (target) {
-        setRovingFocus(target.dataset.path, true);
+        setRovingFocus(target.dataset.nodeId, true);
       }
     }
 
-    function ensureRovingFocus(preferredPath, focus) {
+    function ensureRovingFocus(preferredNodeId, focus) {
       const rows = visibleRows();
       if (rows.length === 0) {
-        rovingPath = '';
+        rovingNodeId = '';
         return;
       }
-      const preferred = rows.find(function (row) { return row.dataset.path === preferredPath; });
+      const preferred = rows.find(function (row) { return row.dataset.nodeId === preferredNodeId; });
       const target = preferred || rows[0];
-      setRovingFocus(target.dataset.path, Boolean(focus));
+      setRovingFocus(target.dataset.nodeId, Boolean(focus));
     }
 
-    function setRovingFocus(path, focus) {
+    function setRovingFocus(nodeId, focus) {
       const rows = visibleRows();
       let target;
       rows.forEach(function (row) {
-        const selected = row.dataset.path === path;
+        const selected = row.dataset.nodeId === nodeId;
         row.tabIndex = selected ? 0 : -1;
         if (selected) {
           target = row;
@@ -772,7 +771,7 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
         target.tabIndex = 0;
       }
       if (target) {
-        rovingPath = target.dataset.path;
+        rovingNodeId = target.dataset.nodeId;
         if (focus) {
           target.focus();
         }

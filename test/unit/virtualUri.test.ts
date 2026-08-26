@@ -56,6 +56,9 @@ describe('virtual Git document URI', () => {
     'папка/файл-🚀.ts',
     'docs/topic#section?.md',
     'src/e\u0301clair.ts',
+    'src\\..\\literal.ts',
+    'C:\\folder\\file.ts',
+    '\\\\server-name',
   ])('round-trips a safe reference for path %s', (path) => {
     const ref: VirtualDocumentRef = { repositoryId, commit, path, empty: false };
 
@@ -80,7 +83,6 @@ describe('virtual Git document URI', () => {
     [{ repositoryId, commit: 'main', path: 'a.ts', empty: false }, 'commit'],
     [{ repositoryId, commit, path: '', empty: false }, 'path'],
     [{ repositoryId, commit, path: '/workspace/project/a.ts', empty: false }, 'path'],
-    [{ repositoryId, commit, path: 'src\\..\\escape.ts', empty: false }, 'path'],
   ])('rejects an invalid %s while creating a URI', (ref) => {
     expect(() => createVirtualUri(ref)).toThrow(InvalidVirtualUriError);
   });

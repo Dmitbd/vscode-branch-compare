@@ -49,4 +49,9 @@ describe('extension manifest', () => {
   it('documents the minimum Git version required by the local-only read boundary', () => {
     expect(readme).toContain('Git 2.45 or newer');
   });
+
+  it('documents the intentional Git attributes precedence policy', () => {
+    expect(readme).toContain('dirty working-tree attributes do not affect the result');
+    expect(readme).toContain('`.git/info/attributes` and user or system attribute sources remain in effect');
+  });
 });

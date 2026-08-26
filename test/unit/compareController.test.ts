@@ -242,6 +242,30 @@ describe('CompareController', () => {
     expect(h.adapter.fetch.mock.calls.map((call) => call[1])).toEqual(['upstream']);
   });
 
+  test('inline Refresh retries initial local Git discovery when no selection exists yet', async () => {
+    const h = harness({ remoteHead: remoteMain.fullName });
+    h.adapter.listRefs.mockRejectedValueOnce(new Error('initial refs failed'));
+    const controller = new CompareController(h.deps);
+
+    await controller.initialize();
+    expect(h.lastInput()).toMatchObject({
+      selection: undefined,
+      error: expect.objectContaining({ message: 'Unable to compare branches' }),
+    });
+
+    await controller.refresh();
+
+    expect(h.adapter.listRefs).toHaveBeenCalledTimes(2);
+    expect(h.compare).toHaveBeenCalledOnce();
+    expect(h.lastInput()).toMatchObject({
+      selection: expect.objectContaining({
+        baseRef: remoteMain.fullName,
+        compareRef: localFeature.fullName,
+      }),
+      error: undefined,
+    });
+  });
+
   test('loads the complete tree lazily once and reuses it when toggled back on', async () => {
     const h = harness({ remoteHead: remoteMain.fullName });
     const controller = new CompareController(h.deps);
@@ -563,6 +587,29 @@ describe('CompareController', () => {
     });
   });
 
+  test('directs a missing complete-tree object to the only explicit network action', async () => {
+    const h = harness({ remoteHead: remoteMain.fullName });
+    h.loadCompleteTree.mockRejectedValueOnce(new GitCommandError(
+      128,
+      'fatal: could not fetch promised tree from promisor remote',
+    ));
+    const controller = new CompareController(h.deps);
+    await controller.initialize();
+
+    await controller.toggleUnchanged();
+
+    expect(h.lastInput()).toMatchObject({
+      showUnchanged: false,
+      completeTreeError: expect.objectContaining({
+        message: 'Required Git objects are unavailable locally; run Fetch and try again',
+      }),
+    });
+    expect(buildTreeModel(h.lastInput() as unknown as TreeModelInput)).toMatchObject({
+      completeTreeError: 'Required Git objects are unavailable locally; run Fetch and try again',
+      canRetryCompleteTree: true,
+    });
+  });
+
   test('keeps the previous comparison visible when fetch fails before recomputation', async () => {
     const h = harness({ remoteHead: remoteMain.fullName });
     const controller = new CompareController(h.deps);
@@ -754,6 +801,10 @@ describe('toUserFacingError', () => {
     expect(toUserFacingError(new GitCommandError(
       128,
       'fatal: could not fetch 0123456789abcdef from promisor remote',
+    )).message).toBe('Required Git objects are unavailable locally; run Fetch and try again');
+    expect(toUserFacingError(new GitCommandError(
+      128,
+      'fatal: could not get object info for promised blob',
     )).message).toBe('Required Git objects are unavailable locally; run Fetch and try again');
   });
 

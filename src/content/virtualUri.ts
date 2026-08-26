@@ -102,10 +102,8 @@ function isRepositoryRelativePath(path: string): boolean {
     path.length === 0
     || path.includes('\0')
     || path.startsWith('/')
-    || path.startsWith('\\\\')
-    || /^[A-Za-z]:[\\/]/.test(path)
   ) {
     return false;
   }
-  return !path.split(/[\\/]/).some((segment) => segment === '.' || segment === '..');
+  return !path.split('/').some((segment) => segment === '.' || segment === '..');
 }

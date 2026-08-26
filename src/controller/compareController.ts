@@ -10,7 +10,12 @@ import type { GitAdapter } from '../git/gitAdapter';
 import { GitCommandCancelledError } from '../git/commandRunner';
 import type { RepositorySnapshot } from '../repositories/repositoryProvider';
 import type { TreeModelInput } from '../tree/treeModel';
-import { technicalErrorText, toUserFacingError, UserFacingError } from '../errors/userFacingError';
+import {
+  isMissingGitObjectError,
+  technicalErrorText,
+  toUserFacingError,
+  UserFacingError,
+} from '../errors/userFacingError';
 
 export interface ControllerCancellationTokenSource {
   readonly token: CancellationToken;
@@ -174,8 +179,12 @@ export class CompareController {
     if (this.disposed) {
       return;
     }
-    if (!this.repository || !this.selection) {
+    if (!this.repository) {
       this.renderSelectionError();
+      return;
+    }
+    if (!this.selection) {
+      await this.initializeSelection();
       return;
     }
     await this.recompute(true);
@@ -251,7 +260,9 @@ export class CompareController {
       this.showUnchanged = false;
       this.completeTree = undefined;
       this.completeTreeLoading = false;
-      this.completeTreeError = new UserFacingError('Unable to load all files; try again', error);
+      this.completeTreeError = isMissingGitObjectError(error)
+        ? toUserFacingError(error)
+        : new UserFacingError('Unable to load all files; try again', error);
       this.logError(error);
       this.render();
     }
@@ -436,6 +447,7 @@ export class CompareController {
     const generation = this.startOperation();
     const source = this.activeSource;
     this.loading = true;
+    this.error = undefined;
     this.render();
     try {
       const refs = await this.dependencies.git.listRefs(repository.rootUri.fsPath, source?.token);
