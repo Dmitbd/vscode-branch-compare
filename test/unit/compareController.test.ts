@@ -352,6 +352,69 @@ describe('CompareController', () => {
     expect(h.lastInput()).toMatchObject({ showUnchanged: true, completeTree });
   });
 
+  test('preserves complete-tree intent across overlapping same-SHA local refreshes', async () => {
+    const pendingTree = deferred<CompleteTreePaths>();
+    const firstRefreshResult = deferred<ComparisonResult>();
+    const secondRefreshResult = deferred<ComparisonResult>();
+    const h = harness({ remoteHead: remoteMain.fullName });
+    h.loadCompleteTree.mockImplementationOnce(async () => pendingTree.promise);
+    const controller = new CompareController(h.deps);
+    await controller.initialize();
+    const previousResult = h.lastInput().result as ComparisonResult;
+    h.compare
+      .mockImplementationOnce(async () => firstRefreshResult.promise)
+      .mockImplementationOnce(async () => secondRefreshResult.promise);
+
+    const initialTreeLoad = controller.toggleUnchanged();
+    await vi.waitFor(() => expect(h.loadCompleteTree).toHaveBeenCalledOnce());
+    const initialTreeToken = h.loadCompleteTree.mock.calls[0][2];
+
+    const firstRefresh = controller.refresh();
+    await vi.waitFor(() => expect(h.compare).toHaveBeenCalledTimes(2));
+    const firstRefreshToken = h.compare.mock.calls[1][2];
+
+    const secondRefresh = controller.refresh();
+    await vi.waitFor(() => expect(h.compare).toHaveBeenCalledTimes(3));
+    const secondRefreshToken = h.compare.mock.calls[2][2];
+
+    expect(initialTreeToken?.isCancellationRequested).toBe(true);
+    expect(firstRefreshToken?.isCancellationRequested).toBe(true);
+    expect(secondRefreshToken?.isCancellationRequested).toBe(false);
+
+    secondRefreshResult.resolve(previousResult);
+    await vi.waitFor(() => expect(h.loadCompleteTree).toHaveBeenCalledTimes(2));
+    await secondRefresh;
+
+    expect(h.loadCompleteTree.mock.calls[1][2]).toBe(secondRefreshToken);
+    expect(h.lastInput()).toMatchObject({
+      result: previousResult,
+      showUnchanged: true,
+      completeTree,
+      completeTreeLoading: false,
+      loading: false,
+    });
+
+    firstRefreshResult.resolve(comparison(h.compare.mock.calls[1][1], 'new'));
+    pendingTree.resolve({ mergeBasePaths: ['stale.txt'], comparePaths: ['stale.txt'] });
+    await Promise.all([firstRefresh, initialTreeLoad]);
+
+    expect(h.loadCompleteTree).toHaveBeenCalledTimes(2);
+    expect(h.lastInput()).toMatchObject({
+      result: previousResult,
+      showUnchanged: true,
+      completeTree,
+      completeTreeLoading: false,
+      loading: false,
+    });
+    const finalInput = h.lastInput();
+    expect(
+      finalInput.showUnchanged === true
+        && finalInput.completeTree === undefined
+        && finalInput.completeTreeLoading === false
+        && finalInput.loading === false,
+    ).toBe(false);
+  });
+
   test('does not restart a cancelled complete-tree load after a changed-SHA local refresh', async () => {
     const pendingTree = deferred<CompleteTreePaths>();
     const h = harness({ remoteHead: remoteMain.fullName });

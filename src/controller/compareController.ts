@@ -79,6 +79,7 @@ export class CompareController {
   private error: UserFacingError | undefined;
   private loading = false;
   private showUnchanged = false;
+  private completeTreeRequested = false;
   private completeTree: CompleteTreePaths | undefined;
   private completeTreeLoading = false;
   private completeTreeError: UserFacingError | undefined;
@@ -173,6 +174,7 @@ export class CompareController {
 
     if (this.showUnchanged) {
       this.invalidateOperation();
+      this.completeTreeRequested = false;
       this.showUnchanged = false;
       this.completeTreeLoading = false;
       this.render();
@@ -181,6 +183,7 @@ export class CompareController {
 
     if (this.completeTree) {
       this.invalidateOperation();
+      this.completeTreeRequested = true;
       this.showUnchanged = true;
       this.completeTreeError = undefined;
       this.render();
@@ -188,6 +191,7 @@ export class CompareController {
     }
 
     const generation = this.startOperation();
+    this.completeTreeRequested = true;
     await this.loadCompleteTreeWithinOperation(
       generation,
       repository,
@@ -241,8 +245,10 @@ export class CompareController {
 
     const repository = this.repository;
     const selection = this.selection;
+    const completeTreeRequestFor = this.pendingCompleteTreeRequest();
     const generation = this.startOperation();
     const source = this.activeSource;
+    this.suspendCompleteTreeLoad(completeTreeRequestFor);
     this.loading = true;
     this.error = undefined;
     this.render();
@@ -255,7 +261,14 @@ export class CompareController {
       if (!this.isCurrent(generation, selection, repository)) {
         return;
       }
-      await this.recomputeWithinOperation(generation, repository, selection, true, source?.token);
+      await this.recomputeWithinOperation(
+        generation,
+        repository,
+        selection,
+        true,
+        source?.token,
+        completeTreeRequestFor,
+      );
     } catch (error) {
       if (!this.isCurrent(generation, selection, repository) || isCancellation(error)) {
         return;
@@ -263,7 +276,20 @@ export class CompareController {
       this.loading = false;
       this.error = undefined;
       this.logError(error);
-      this.render();
+      const currentResult = this.result;
+      const restoringCompleteTree = currentResult
+        && this.shouldResumeCompleteTree(completeTreeRequestFor, currentResult)
+        ? this.loadCompleteTreeWithinOperation(
+          generation,
+          repository,
+          selection,
+          currentResult,
+          source?.token,
+        )
+        : undefined;
+      if (!restoringCompleteTree) {
+        this.render();
+      }
       const action = await this.dependencies.ui.showError(
         'Fetch failed; the previous comparison is still shown',
         'Show Output',
@@ -271,6 +297,7 @@ export class CompareController {
       if (action === 'Show Output') {
         this.dependencies.output.show(true);
       }
+      await restoringCompleteTree;
     }
   }
 
@@ -471,15 +498,10 @@ export class CompareController {
     if (!repository || !selection) {
       return;
     }
-    const resumeCompleteTreeFor = this.showUnchanged && this.completeTreeLoading
-      ? this.result
-      : undefined;
-    const generation = this.startOperation(resumeCompleteTreeFor !== undefined);
+    const completeTreeRequestFor = this.pendingCompleteTreeRequest();
+    const generation = this.startOperation();
     const source = this.activeSource;
-    if (resumeCompleteTreeFor) {
-      this.completeTreeLoading = false;
-      this.completeTreeError = undefined;
-    }
+    this.suspendCompleteTreeLoad(completeTreeRequestFor);
     this.loading = true;
     this.error = undefined;
     this.render();
@@ -489,7 +511,7 @@ export class CompareController {
       selection,
       reloadRefs,
       source?.token,
-      resumeCompleteTreeFor,
+      completeTreeRequestFor,
     );
   }
 
@@ -499,7 +521,7 @@ export class CompareController {
     selection: ComparisonSelection,
     reloadRefs: boolean,
     token?: CancellationToken,
-    resumeCompleteTreeFor?: ComparisonResult,
+    completeTreeRequestFor?: ComparisonResult,
   ): Promise<void> {
     try {
       if (reloadRefs) {
@@ -518,7 +540,7 @@ export class CompareController {
         repository,
         selection,
         token,
-        resumeCompleteTreeFor,
+        completeTreeRequestFor,
       );
     } catch (error) {
       this.applyComparisonError(generation, selection, repository, error);
@@ -530,7 +552,7 @@ export class CompareController {
     repository: RepositorySnapshot,
     selection: ComparisonSelection,
     token?: CancellationToken,
-    resumeCompleteTreeFor?: ComparisonResult,
+    completeTreeRequestFor?: ComparisonResult,
   ): Promise<void> {
     const result = await this.dependencies.comparisonService.compare(
       repository.rootUri.fsPath,
@@ -540,10 +562,10 @@ export class CompareController {
     if (!this.isCurrent(generation, selection, repository)) {
       return;
     }
-    const shouldResumeCompleteTree = sameResultShas(resumeCompleteTreeFor, result);
     if (!sameResultShas(this.result, result)) {
       this.resetCompleteTreeState();
     }
+    const shouldResumeCompleteTree = this.shouldResumeCompleteTree(completeTreeRequestFor, result);
     this.result = result;
     this.loading = false;
     this.error = result.files.length === 0
@@ -603,11 +625,8 @@ export class CompareController {
     });
   }
 
-  private startOperation(keepCompleteTreeRequest = false): number {
+  private startOperation(): number {
     const generation = this.invalidateOperation();
-    if (this.completeTreeLoading && !keepCompleteTreeRequest) {
-      this.resetCompleteTreeState();
-    }
     this.activeSource = this.dependencies.createCancellationTokenSource();
     return generation;
   }
@@ -640,10 +659,34 @@ export class CompareController {
   }
 
   private resetCompleteTreeState(): void {
+    this.completeTreeRequested = false;
     this.showUnchanged = false;
     this.completeTree = undefined;
     this.completeTreeLoading = false;
     this.completeTreeError = undefined;
+  }
+
+  private pendingCompleteTreeRequest(): ComparisonResult | undefined {
+    return this.completeTreeRequested && !this.completeTree
+      ? this.result
+      : undefined;
+  }
+
+  private suspendCompleteTreeLoad(completeTreeRequestFor: ComparisonResult | undefined): void {
+    if (!completeTreeRequestFor) {
+      return;
+    }
+    this.completeTreeLoading = false;
+    this.completeTreeError = undefined;
+  }
+
+  private shouldResumeCompleteTree(
+    completeTreeRequestFor: ComparisonResult | undefined,
+    result: ComparisonResult,
+  ): boolean {
+    return this.completeTreeRequested
+      && !this.completeTree
+      && sameResultShas(completeTreeRequestFor, result);
   }
 
   private logError(error: unknown): void {
