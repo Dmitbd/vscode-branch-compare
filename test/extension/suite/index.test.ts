@@ -5,6 +5,7 @@ interface BranchCompareTestApi {
   openFirstDiff(baseRef: string, compareRef: string): Promise<{
     readonly schemes: readonly string[];
     readonly dirty: readonly boolean[];
+    readonly languageIds: readonly string[];
   }>;
 }
 
@@ -31,4 +32,5 @@ export async function run(): Promise<void> {
   const opened = await api.openFirstDiff('refs/heads/main', 'refs/heads/feature/extension-host');
   assert.deepEqual(opened.schemes, ['branch-compare', 'branch-compare']);
   assert.deepEqual(opened.dirty, [false, false]);
+  assert.deepEqual(opened.languageIds, ['typescript', 'typescript']);
 }

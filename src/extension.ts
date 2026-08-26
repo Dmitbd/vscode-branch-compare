@@ -8,12 +8,13 @@ import { DefaultGitAdapter } from './git/gitAdapter';
 import { RepositoryProvider, type RepositorySnapshot } from './repositories/repositoryProvider';
 import { SelectionStore } from './state/selectionStore';
 import { CompareTreeProvider } from './tree/compareTreeProvider';
-import type { FileTreeNode } from './tree/treeModel';
+import type { ViewFileNode } from './tree/treeModel';
 
 interface BranchCompareTestApi {
   openFirstDiff(baseRef: string, compareRef: string): Promise<{
     readonly schemes: readonly string[];
     readonly dirty: readonly boolean[];
+    readonly languageIds: readonly string[];
   }>;
 }
 
@@ -53,8 +54,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<Branch
     vscode.commands.registerCommand('branchCompare.fetch', () => controller.fetch()),
     vscode.commands.registerCommand('branchCompare.refresh', () => controller.refresh()),
     vscode.commands.registerCommand('branchCompare.swap', () => controller.swap()),
-    vscode.commands.registerCommand('branchCompare.openDiff', (node?: FileTreeNode) => (
-      node?.kind === 'file' ? controller.openDiff(node.file, node.comparisonGeneration) : undefined
+    vscode.commands.registerCommand('branchCompare.openDiff', (node?: ViewFileNode) => (
+      node?.kind === 'file' ? controller.openDiff(node.target, node.generation) : undefined
     )),
   ];
   const repositoryOpened = repositories.onDidOpenRepository(() => { void controller.repositoriesChanged(); });
@@ -83,13 +84,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<Branch
       if (!file) {
         throw new Error('The extension-host fixture comparison has no changed file.');
       }
-      await openFullDiff(repository.id, result, file, shortRef(baseRef), shortRef(compareRef));
+      await openFullDiff(repository.id, result, { kind: 'changed', file }, shortRef(baseRef), shortRef(compareRef));
       const documents = vscode.workspace.textDocuments
         .filter((document) => document.uri.scheme === BRANCH_COMPARE_SCHEME)
         .slice(-2);
       return {
         schemes: documents.map((document) => document.uri.scheme),
         dirty: documents.map((document) => document.isDirty),
+        languageIds: documents.map((document) => document.languageId),
       };
     },
   };

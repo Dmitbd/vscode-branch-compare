@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import type { ChangedFile, ComparisonResult } from '../domain/model';
+import type { ChangedFile, ComparisonResult, DiffTarget } from '../domain/model';
 import type { GitAdapter } from '../git/gitAdapter';
 import type { RepositorySnapshot } from '../repositories/repositoryProvider';
 import { createVirtualUri, parseVirtualUri, type VirtualDocumentRef } from './virtualUri';
@@ -90,11 +90,11 @@ export class GitContentProvider implements vscode.TextDocumentContentProvider {
 export async function openFullDiff(
   repositoryId: string,
   result: ComparisonResult,
-  file: ChangedFile,
+  target: DiffTarget,
   baseLabel: string,
   compareLabel: string,
 ): Promise<void> {
-  const { left, right, displayPath } = createDiffRefs(repositoryId, result, file);
+  const { left, right, displayPath } = createDiffRefs(repositoryId, result, target);
   await vscode.commands.executeCommand(
     'vscode.diff',
     createVirtualUri(left),
@@ -105,6 +105,22 @@ export async function openFullDiff(
 }
 
 function createDiffRefs(
+  repositoryId: string,
+  result: ComparisonResult,
+  target: DiffTarget,
+): { left: VirtualDocumentRef; right: VirtualDocumentRef; displayPath: string } {
+  if (target.kind === 'unchanged') {
+    return {
+      left: documentRef(repositoryId, result.mergeBaseSha, target.path, false),
+      right: documentRef(repositoryId, result.compareSha, target.path, false),
+      displayPath: target.path,
+    };
+  }
+
+  return createChangedDiffRefs(repositoryId, result, target.file);
+}
+
+function createChangedDiffRefs(
   repositoryId: string,
   result: ComparisonResult,
   file: ChangedFile,

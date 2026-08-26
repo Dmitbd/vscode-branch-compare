@@ -27,11 +27,11 @@ async function createFixture(): Promise<string> {
     await git(root, 'init', '--initial-branch=main');
     await git(root, 'config', 'user.name', 'Branch Compare Tests');
     await git(root, 'config', 'user.email', 'branch-compare@example.test');
-    await writeFile(path.join(root, 'base.txt'), 'base\n');
+    await writeFile(path.join(root, 'context.ts'), 'export const context = "base";\n');
     await git(root, 'add', '--all');
     await git(root, 'commit', '-m', 'base');
     await git(root, 'switch', '-c', 'feature/extension-host');
-    await writeFile(path.join(root, 'feature.txt'), 'feature\n');
+    await writeFile(path.join(root, 'context.ts'), 'export const context = "feature";\n');
     await git(root, 'add', '--all');
     await git(root, 'commit', '-m', 'feature');
     return root;

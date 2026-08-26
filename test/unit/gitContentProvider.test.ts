@@ -41,7 +41,7 @@ vi.mock('vscode', () => {
 });
 
 import { commands } from 'vscode';
-import type { ChangedFile, ComparisonResult } from '../../src/domain/model';
+import type { ChangedFile, ComparisonResult, DiffTarget } from '../../src/domain/model';
 import type { GitAdapter } from '../../src/git/gitAdapter';
 import type { RepositorySnapshot } from '../../src/repositories/repositoryProvider';
 import {
@@ -211,7 +211,7 @@ describe('openFullDiff', () => {
       displayPath: 'src/after.ts',
     },
   ])('maps $status to two read-only branch-compare snapshots', async ({ file, left, right, displayPath }) => {
-    await openFullDiff(repositoryId, result, file, 'origin/main', 'feature/x');
+    await openFullDiff(repositoryId, result, { kind: 'changed', file }, 'origin/main', 'feature/x');
 
     expect(commands.executeCommand).toHaveBeenCalledOnce();
     const [command, leftUri, rightUri, title, options] = vi.mocked(commands.executeCommand).mock.calls[0];
@@ -222,5 +222,25 @@ describe('openFullDiff', () => {
     expect(parseVirtualUri(rightUri as never)).toEqual({ repositoryId, ...right });
     expect(title).toBe(`origin/main ↔ feature/x · ${displayPath}`);
     expect(options).toEqual({ preview: true });
+  });
+
+  test('opens unchanged paths from the merge-base and compared snapshots', async () => {
+    const target: DiffTarget = { kind: 'unchanged', path: 'src/context.ts' };
+
+    await openFullDiff(repositoryId, result, target, 'origin/main', 'feature/x');
+
+    const [, leftUri, rightUri] = vi.mocked(commands.executeCommand).mock.calls[0];
+    expect(parseVirtualUri(leftUri as never)).toEqual({
+      repositoryId,
+      commit: mergeBaseSha,
+      path: 'src/context.ts',
+      empty: false,
+    });
+    expect(parseVirtualUri(rightUri as never)).toEqual({
+      repositoryId,
+      commit: compareSha,
+      path: 'src/context.ts',
+      empty: false,
+    });
   });
 });

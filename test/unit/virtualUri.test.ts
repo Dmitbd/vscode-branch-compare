@@ -61,9 +61,8 @@ describe('virtual Git document URI', () => {
 
     expect(uri.scheme).toBe(BRANCH_COMPARE_SCHEME);
     expect(uri.authority).toBe('');
-    expect(uri.path).toBe('/document');
+    expect(uri.path).toBe(`/${path}`);
     expect(uri.query).toMatch(/^ref=[A-Za-z0-9_-]+$/);
-    expect(uri.toString()).not.toContain(path);
     expect(parseVirtualUri(uri)).toEqual(ref);
   });
 
@@ -79,6 +78,7 @@ describe('virtual Git document URI', () => {
     [{ repositoryId, commit: 'main', path: 'a.ts', empty: false }, 'commit'],
     [{ repositoryId, commit, path: '', empty: false }, 'path'],
     [{ repositoryId, commit, path: '/workspace/project/a.ts', empty: false }, 'path'],
+    [{ repositoryId, commit, path: 'src\\..\\escape.ts', empty: false }, 'path'],
   ])('rejects an invalid %s while creating a URI', (ref) => {
     expect(() => createVirtualUri(ref)).toThrow(InvalidVirtualUriError);
   });
@@ -101,6 +101,18 @@ describe('virtual Git document URI', () => {
       empty: 'false',
     })).toString('base64url');
     const uri = Uri.from({ scheme: BRANCH_COMPARE_SCHEME, path: '/document', query: `ref=${payload}` });
+
+    expect(() => parseVirtualUri(uri)).toThrow(InvalidVirtualUriError);
+  });
+
+  test('rejects a URI path that does not match its trusted payload', () => {
+    const payload = Buffer.from(JSON.stringify({
+      repositoryId,
+      commit,
+      path: 'src/context.ts',
+      empty: false,
+    })).toString('base64url');
+    const uri = Uri.from({ scheme: BRANCH_COMPARE_SCHEME, path: '/src/other.ts', query: `ref=${payload}` });
 
     expect(() => parseVirtualUri(uri)).toThrow(InvalidVirtualUriError);
   });

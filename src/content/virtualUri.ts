@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 
 export const BRANCH_COMPARE_SCHEME = 'branch-compare';
 
-const virtualDocumentPath = '/document';
 const repositoryIdPattern = /^[0-9a-f]{16}$/;
 const shaPattern = /^[0-9a-f]{40,64}$/;
 const base64UrlPattern = /^[A-Za-z0-9_-]+$/;
@@ -26,7 +25,7 @@ export function createVirtualUri(ref: VirtualDocumentRef): vscode.Uri {
   const payload = Buffer.from(JSON.stringify(validated), 'utf8').toString('base64url');
   return vscode.Uri.from({
     scheme: BRANCH_COMPARE_SCHEME,
-    path: virtualDocumentPath,
+    path: `/${validated.path}`,
     query: `ref=${payload}`,
   });
 }
@@ -35,7 +34,6 @@ export function parseVirtualUri(uri: vscode.Uri): VirtualDocumentRef {
   if (
     uri.scheme !== BRANCH_COMPARE_SCHEME
     || uri.authority !== ''
-    || uri.path !== virtualDocumentPath
     || uri.fragment !== ''
   ) {
     throw new InvalidVirtualUriError();
@@ -56,7 +54,11 @@ export function parseVirtualUri(uri: vscode.Uri): VirtualDocumentRef {
     if (decoded.toString('base64url') !== payload) {
       throw new Error('Non-canonical base64url payload.');
     }
-    return validateRef(JSON.parse(decoded.toString('utf8')));
+    const ref = validateRef(JSON.parse(decoded.toString('utf8')));
+    if (uri.path !== `/${ref.path}`) {
+      throw new InvalidVirtualUriError();
+    }
+    return ref;
   } catch (error) {
     if (error instanceof InvalidVirtualUriError) {
       throw error;
@@ -105,5 +107,5 @@ function isRepositoryRelativePath(path: string): boolean {
   ) {
     return false;
   }
-  return !path.split('/').some((segment) => segment === '.' || segment === '..');
+  return !path.split(/[\\/]/).some((segment) => segment === '.' || segment === '..');
 }

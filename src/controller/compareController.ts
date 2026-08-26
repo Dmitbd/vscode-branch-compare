@@ -1,5 +1,5 @@
 import type { CancellationToken } from 'vscode';
-import type { ComparisonResult, ComparisonSelection, GitRef, ChangedFile } from '../domain/model';
+import type { ComparisonResult, ComparisonSelection, DiffTarget, GitRef } from '../domain/model';
 import type { GitAdapter } from '../git/gitAdapter';
 import { GitCommandCancelledError } from '../git/commandRunner';
 import type { RepositorySnapshot } from '../repositories/repositoryProvider';
@@ -52,7 +52,7 @@ export interface ControllerDependencies {
   readonly openDiff?: (
     repositoryId: string,
     result: ComparisonResult,
-    file: ChangedFile,
+    target: DiffTarget,
     baseLabel: string,
     compareLabel: string,
   ) => Promise<void>;
@@ -207,7 +207,7 @@ export class CompareController {
     await this.recompute(false);
   }
 
-  public async openDiff(file: ChangedFile, comparisonGeneration: number): Promise<void> {
+  public async openDiff(target: DiffTarget, comparisonGeneration: number): Promise<void> {
     if (
       comparisonGeneration !== this.generation
       || !this.repository
@@ -220,7 +220,7 @@ export class CompareController {
       await this.dependencies.openDiff(
         this.repository.id,
         this.result,
-        file,
+        target,
         displayRef(this.selection?.baseRef, this.refs),
         displayRef(this.selection?.compareRef, this.refs),
       );
