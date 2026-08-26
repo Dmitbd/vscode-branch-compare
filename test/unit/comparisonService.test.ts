@@ -1,6 +1,6 @@
 import type { CancellationToken } from 'vscode';
 import { describe, expect, test, vi, type Mocked } from 'vitest';
-import type { ChangedFile, ComparisonSelection } from '../../src/domain/model';
+import type { ChangedFile, ComparisonResult, ComparisonSelection } from '../../src/domain/model';
 import { GitCommandCancelledError, GitCommandError } from '../../src/git/commandRunner';
 import type { GitAdapter } from '../../src/git/gitAdapter';
 import {
@@ -27,7 +27,9 @@ function createAdapter(): Mocked<GitAdapter> {
     resolveCommit: vi.fn(),
     findMergeBase: vi.fn(),
     listChangedFiles: vi.fn(),
+    listTreePaths: vi.fn(),
     readBlob: vi.fn(),
+    getBlobSize: vi.fn(),
     fetch: vi.fn(),
   };
 }
@@ -49,6 +51,51 @@ function deferred<T>() {
 }
 
 describe('ComparisonService', () => {
+  test('loads sorted deeply immutable paths from both complete commit trees', async () => {
+    const adapter = createAdapter();
+    const token = { isCancellationRequested: false } as CancellationToken;
+    const result: ComparisonResult = {
+      selection,
+      baseSha,
+      compareSha,
+      mergeBaseSha,
+      files: [],
+    };
+    adapter.listTreePaths
+      .mockResolvedValueOnce(['z10.txt', 'e\u0301clair.txt', 'z2.txt'])
+      .mockResolvedValueOnce(['src/z10.ts', 'src/z2.ts', 'README.md']);
+
+    const trees = await new ComparisonService(adapter).loadCompleteTree(root, result, token);
+
+    expect(adapter.listTreePaths).toHaveBeenNthCalledWith(1, root, mergeBaseSha, token);
+    expect(adapter.listTreePaths).toHaveBeenNthCalledWith(2, root, compareSha, token);
+    expect(trees).toEqual({
+      mergeBasePaths: ['éclair.txt', 'z2.txt', 'z10.txt'],
+      comparePaths: ['README.md', 'src/z2.ts', 'src/z10.ts'],
+    });
+    expect(Object.isFrozen(trees)).toBe(true);
+    expect(Object.isFrozen(trees.mergeBasePaths)).toBe(true);
+    expect(Object.isFrozen(trees.comparePaths)).toBe(true);
+    expect(() => (trees.mergeBasePaths as string[]).push('other.txt')).toThrow();
+  });
+
+  test('rejects duplicate paths after NFC normalization', async () => {
+    const adapter = createAdapter();
+    const result: ComparisonResult = {
+      selection,
+      baseSha,
+      compareSha,
+      mergeBaseSha,
+      files: [],
+    };
+    adapter.listTreePaths
+      .mockResolvedValueOnce(['e\u0301clair.txt', 'éclair.txt'])
+      .mockResolvedValueOnce([]);
+
+    await expect(new ComparisonService(adapter).loadCompleteTree(root, result))
+      .rejects.toThrow('Duplicate normalized tree path');
+  });
+
   test('resolves refs in order and lists only merge-base to compare changes', async () => {
     const adapter = createAdapter();
     const token = { isCancellationRequested: false } as CancellationToken;

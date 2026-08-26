@@ -1,5 +1,10 @@
 import type { CancellationToken } from 'vscode';
-import type { ChangedFile, ComparisonResult, ComparisonSelection } from '../domain/model';
+import type {
+  ChangedFile,
+  ComparisonResult,
+  ComparisonSelection,
+  CompleteTreePaths,
+} from '../domain/model';
 import { GitCommandCancelledError, GitCommandError } from '../git/commandRunner';
 import type { GitAdapter } from '../git/gitAdapter';
 import { ComparisonCache, type ComparisonData } from './comparisonCache';
@@ -63,6 +68,23 @@ export class ComparisonService {
     }
 
     return createComparisonResult(selectionSnapshot, data);
+  }
+
+  public async loadCompleteTree(
+    root: string,
+    result: ComparisonResult,
+    token?: CancellationToken,
+  ): Promise<CompleteTreePaths> {
+    throwIfCancelled(token);
+    const [mergeBasePaths, comparePaths] = await Promise.all([
+      this.adapter.listTreePaths(root, result.mergeBaseSha, token),
+      this.adapter.listTreePaths(root, result.compareSha, token),
+    ]);
+    throwIfCancelled(token);
+    return Object.freeze({
+      mergeBasePaths: freezeSortedPaths(mergeBasePaths),
+      comparePaths: freezeSortedPaths(comparePaths),
+    });
   }
 
   private async resolveRef(
@@ -143,4 +165,20 @@ function normalizedDisplayPath(file: ChangedFile): string {
     throw new TypeError('Changed file must have an old or new path.');
   }
   return displayPath.normalize('NFC');
+}
+
+function freezeSortedPaths(paths: readonly string[]): readonly string[] {
+  const normalizedPaths = paths.map((path) => path.normalize('NFC'));
+  if (new Set(normalizedPaths).size !== normalizedPaths.length) {
+    throw new TypeError('Duplicate normalized tree path.');
+  }
+  return Object.freeze(normalizedPaths.sort(comparePaths));
+}
+
+function comparePaths(left: string, right: string): number {
+  const displayOrder = displayPathCollator.compare(left, right);
+  if (displayOrder !== 0) {
+    return displayOrder;
+  }
+  return left < right ? -1 : left > right ? 1 : 0;
 }

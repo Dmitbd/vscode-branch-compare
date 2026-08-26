@@ -34,3 +34,8 @@ export interface ComparisonResult {
   readonly mergeBaseSha: string;
   readonly files: readonly ChangedFile[];
 }
+
+export interface CompleteTreePaths {
+  readonly mergeBasePaths: readonly string[];
+  readonly comparePaths: readonly string[];
+}

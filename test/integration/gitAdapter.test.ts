@@ -114,6 +114,17 @@ describe('DefaultGitAdapter', () => {
     ]));
   });
 
+  test('lists every path from each commit tree without changing repository state', async () => {
+    const before = await repo.snapshot();
+
+    await expect(adapter.listTreePaths(repo.root, branchPoint))
+      .resolves.toEqual(['binary.dat', 'notes.txt', 'old name.txt']);
+    await expect(adapter.listTreePaths(repo.root, featureCommit))
+      .resolves.toEqual(['binary.dat', 'notes.txt', 'renamed ü file.txt']);
+
+    expect(await repo.snapshot()).toEqual(before);
+  });
+
   test('reads blob contents as exact bytes', async () => {
     await expect(adapter.readBlob(repo.root, featureCommit, 'binary.dat'))
       .resolves.toEqual(blobContents);

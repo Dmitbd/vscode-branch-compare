@@ -4,6 +4,7 @@ import { GitOutputError } from './GitOutputError';
 import { GitCommandError, GitCommandRunner, type CommandRunner } from './commandRunner';
 import { parseNameStatus } from './parseNameStatus';
 import { parseNumStat } from './parseNumStat';
+import { parsePathList } from './parsePathList';
 import { parseRefs } from './parseRefs';
 
 const shaPattern = /^[0-9a-f]{40,64}$/;
@@ -24,6 +25,7 @@ export interface GitAdapter {
     toSha: string,
     token?: CancellationToken,
   ): Promise<readonly ChangedFile[]>;
+  listTreePaths(root: string, commit: string, token?: CancellationToken): Promise<readonly string[]>;
   readBlob(root: string, commit: string, path: string, token?: CancellationToken): Promise<Buffer>;
   getBlobSize(root: string, commit: string, path: string, token?: CancellationToken): Promise<number>;
   fetch(root: string, remote: string, token?: CancellationToken): Promise<void>;
@@ -131,6 +133,19 @@ export class DefaultGitAdapter implements GitAdapter {
       if (!stat) throw new GitOutputError('Missing numstat record for changed file.');
       return { ...file, lineChanges: Object.freeze({ ...stat.lineChanges }) };
     });
+  }
+
+  public async listTreePaths(
+    root: string,
+    commit: string,
+    token?: CancellationToken,
+  ): Promise<readonly string[]> {
+    validateSha(commit);
+    return parsePathList(await this.runner.run(
+      root,
+      ['ls-tree', '-r', '--name-only', '-z', commit, '--'],
+      token,
+    ));
   }
 
   public readBlob(
