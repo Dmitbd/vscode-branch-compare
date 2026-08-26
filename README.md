@@ -12,9 +12,9 @@ The extension never edits files, stages changes, switches branches, merges, reba
 
 ## Installation
 
-Version 0.1.1 is distributed as a VSIX from this repository; Marketplace publication is not part of this release.
+Version 0.1.2 is distributed as a VSIX from this repository; Marketplace publication is not part of this release.
 
-1. Build or download `branch-compare-viewer-0.1.1.vsix`.
+1. Build or download `branch-compare-viewer-0.1.2.vsix`.
 2. In VS Code, open **Extensions**.
 3. Choose **Views and More Actions… → Install from VSIX…**.
 4. Select the VSIX and open the **Branch Compare** activity-bar view.
@@ -22,7 +22,7 @@ Version 0.1.1 is distributed as a VSIX from this repository; Marketplace publica
 You can also install it from a terminal:
 
 ```bash
-code --install-extension branch-compare-viewer-0.1.1.vsix
+code --install-extension branch-compare-viewer-0.1.2.vsix
 ```
 
 ## Usage
@@ -34,6 +34,14 @@ code --install-extension branch-compare-viewer-0.1.1.vsix
 5. Open a full read-only VS Code diff.
 
 The initial COMPARE is the current local branch. BASE prefers the selected remote's HEAD and then `main`, `master`, or `develop`. You can replace either selection at any time or swap them.
+
+### Comparison view
+
+The branch picker shows `BASE` below `COMPARE`, with an upward arrow from BASE to COMPARE. The changed-files header summarizes the number of files and the total `+added` and `-deleted` lines. Every folder repeats recursive added, modified, and deleted file counts, while each changed file shows one status marker plus its own `+added/-deleted` line counts. Binary files use `—` because text line counts are unavailable.
+
+By default, the tree contains changed files only. Use the eye button to show or hide neutral unchanged files; its Russian popover changes between `показать файлы без изменений` and `скрыть файлы без изменений`. The adjacent `свернуть все папки` button collapses the entire tree.
+
+Opening a text file uses VS Code's native, read-only side-by-side diff. The editor follows the active theme and provides syntax highlighting for recognized file types on both sides, including unchanged files shown by the eye toggle.
 
 ## Comparison semantics
 
