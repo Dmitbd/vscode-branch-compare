@@ -23,7 +23,6 @@ export async function run(): Promise<void> {
     'branchCompare.fetch',
     'branchCompare.refresh',
     'branchCompare.swap',
-    'branchCompare.openDiff',
   ]) {
     assert.ok(commands.includes(command), `${command} must be registered.`);
   }

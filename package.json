@@ -28,7 +28,8 @@
     "views": {
       "branchCompare": [{
         "id": "branchCompare.view",
-        "name": "Branch Compare"
+        "name": "Branch Compare",
+        "type": "webview"
       }]
     },
     "commands": [
@@ -37,8 +38,7 @@
       { "command": "branchCompare.selectCompare", "title": "Branch Compare: Select Compare Branch" },
       { "command": "branchCompare.fetch", "title": "fetch — обновить данные с сервера", "icon": "$(cloud-download)" },
       { "command": "branchCompare.refresh", "title": "refresh — обновить локальные данные", "icon": "$(refresh)" },
-      { "command": "branchCompare.swap", "title": "swap — поменять направление сравнения", "icon": "$(arrow-swap)" },
-      { "command": "branchCompare.openDiff", "title": "Branch Compare: Open Full Diff" }
+      { "command": "branchCompare.swap", "title": "swap — поменять направление сравнения", "icon": "$(arrow-swap)" }
     ],
     "menus": {
       "view/title": [

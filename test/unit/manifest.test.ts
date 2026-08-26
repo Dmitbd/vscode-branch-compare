@@ -14,7 +14,6 @@ describe('extension manifest', () => {
       'branchCompare.fetch',
       'branchCompare.refresh',
       'branchCompare.swap',
-      'branchCompare.openDiff',
     ]);
     expect(commands.join(' ')).not.toMatch(/checkout|merge|rebase|commit|push|stage|apply/i);
   });
@@ -28,6 +27,14 @@ describe('extension manifest', () => {
       'branchCompare.fetch': 'fetch — обновить данные с сервера',
       'branchCompare.refresh': 'refresh — обновить локальные данные',
       'branchCompare.swap': 'swap — поменять направление сравнения',
+    });
+  });
+
+  it('contributes the comparison surface as a webview', () => {
+    expect(manifest.contributes.views.branchCompare).toContainEqual({
+      id: 'branchCompare.view',
+      name: 'Branch Compare',
+      type: 'webview',
     });
   });
 });

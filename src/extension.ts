@@ -7,8 +7,7 @@ import type { GitRef } from './domain/model';
 import { DefaultGitAdapter } from './git/gitAdapter';
 import { RepositoryProvider, type RepositorySnapshot } from './repositories/repositoryProvider';
 import { SelectionStore } from './state/selectionStore';
-import { CompareTreeProvider } from './tree/compareTreeProvider';
-import type { ViewFileNode } from './tree/treeModel';
+import { CompareViewProvider } from './view/compareViewProvider';
 
 interface BranchCompareTestApi {
   openFirstDiff(baseRef: string, compareRef: string): Promise<{
@@ -24,12 +23,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Branch
   const git = new DefaultGitAdapter();
   const comparisonService = new ComparisonService(git);
   const selectionStore = new SelectionStore(context.workspaceState);
-  const treeProvider = new CompareTreeProvider({
-    repositories: repositories.repositories,
-    repository: repositories.repositories.length === 1 ? repositories.repositories[0] : undefined,
-    refs: [],
-  });
-  const treeView = vscode.window.createTreeView('branchCompare.view', { treeDataProvider: treeProvider });
+  const compareView = new CompareViewProvider();
   const contentProvider = new GitContentProvider(git, repositories);
   const contentRegistration = vscode.workspace.registerTextDocumentContentProvider(
     BRANCH_COMPARE_SCHEME,
@@ -40,12 +34,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<Branch
     git,
     comparisonService,
     selectionStore,
-    tree: treeProvider,
+    tree: compareView,
     ui: createUi(),
     output,
     createCancellationTokenSource: () => new vscode.CancellationTokenSource(),
     openDiff: openFullDiff,
   });
+  const viewActions = compareView.onDidReceiveAction((action) => {
+    switch (action.type) {
+      case 'selectRepository': return void controller.selectRepository();
+      case 'selectBase': return void controller.selectBase();
+      case 'selectCompare': return void controller.selectCompare();
+      case 'toggleUnchanged': return void controller.toggleUnchanged();
+      case 'openDiff': return void controller.openDiff(action.target, action.generation);
+    }
+  });
+  const viewRegistration = vscode.window.registerWebviewViewProvider(
+    'branchCompare.view',
+    compareView,
+    { webviewOptions: { retainContextWhenHidden: true } },
+  );
 
   const commands = [
     vscode.commands.registerCommand('branchCompare.selectRepository', () => controller.selectRepository()),
@@ -54,17 +62,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<Branch
     vscode.commands.registerCommand('branchCompare.fetch', () => controller.fetch()),
     vscode.commands.registerCommand('branchCompare.refresh', () => controller.refresh()),
     vscode.commands.registerCommand('branchCompare.swap', () => controller.swap()),
-    vscode.commands.registerCommand('branchCompare.openDiff', (node?: ViewFileNode) => (
-      node?.kind === 'file' ? controller.openDiff(node.target, node.generation) : undefined
-    )),
   ];
   const repositoryOpened = repositories.onDidOpenRepository(() => { void controller.repositoriesChanged(); });
   const repositoryClosed = repositories.onDidCloseRepository(() => { void controller.repositoriesChanged(); });
 
   context.subscriptions.push(
     output,
-    treeProvider,
-    treeView,
+    compareView,
+    viewRegistration,
+    viewActions,
     contentRegistration,
     controller,
     repositoryOpened,
