@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1 - 2026-08-26
+
+- Added concise Russian hover descriptions for Fetch, Refresh, and Swap.
+- Added an `F5` Cursor Extension Development Host workflow for UI testing without reinstalling the VSIX.
+
 ## 0.1.0 - 2026-08-05
 
 - Added local and remote-tracking branch selection with per-repository persistence.

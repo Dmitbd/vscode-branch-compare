@@ -12,9 +12,9 @@ The extension never edits files, stages changes, switches branches, merges, reba
 
 ## Installation
 
-Version 0.1.0 is distributed as a VSIX from this repository; Marketplace publication is not part of this release.
+Version 0.1.1 is distributed as a VSIX from this repository; Marketplace publication is not part of this release.
 
-1. Build or download `branch-compare-viewer-0.1.0.vsix`.
+1. Build or download `branch-compare-viewer-0.1.1.vsix`.
 2. In VS Code, open **Extensions**.
 3. Choose **Views and More Actions… → Install from VSIX…**.
 4. Select the VSIX and open the **Branch Compare** activity-bar view.
@@ -22,7 +22,7 @@ Version 0.1.0 is distributed as a VSIX from this repository; Marketplace publica
 You can also install it from a terminal:
 
 ```bash
-code --install-extension branch-compare-viewer-0.1.0.vsix
+code --install-extension branch-compare-viewer-0.1.1.vsix
 ```
 
 ## Usage

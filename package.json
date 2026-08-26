@@ -2,7 +2,7 @@
   "name": "branch-compare-viewer",
   "displayName": "Branch Compare Viewer",
   "description": "Compare two Git branches in a full, read-only VS Code diff.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "dmitbd",
   "private": true,
   "repository": {
