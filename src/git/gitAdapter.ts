@@ -220,7 +220,10 @@ export function attachLineChanges(
     const [oldPath, newPath] = statPaths(file);
     const key = pathPairKey(oldPath, newPath);
     const bucket = statsByPathPair.get(key);
-    const stat = bucket?.pop();
+    if (!bucket) {
+      throw new GitOutputError('Missing numstat record for changed file.');
+    }
+    const stat = bucket.pop();
     if (!stat) {
       throw new GitOutputError('Missing numstat record for changed file.');
     }
