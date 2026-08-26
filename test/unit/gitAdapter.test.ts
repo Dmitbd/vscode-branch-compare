@@ -90,7 +90,7 @@ function responseFor(args: readonly string[]): Buffer {
   if (args.includes('symbolic-ref')) return Buffer.from('refs/remotes/origin/main\n');
   if (args.includes('rev-parse')) return Buffer.from(`${fromSha}\n`);
   if (args.includes('merge-base')) return Buffer.from(`${fromSha}\n`);
-  if (args.includes('--name-status')) return Buffer.from('M\0src/file.ts\0');
+  if (args.includes('--raw')) return Buffer.from(`:100644 100644 ${fromSha} ${toSha} M\0src/file.ts\0`);
   if (args.includes('--numstat')) return Buffer.from('1\t2\tsrc/file.ts\0');
   if (args.includes('cat-file')) return Buffer.from('4\n');
   if (args.includes('show')) return Buffer.from('text');

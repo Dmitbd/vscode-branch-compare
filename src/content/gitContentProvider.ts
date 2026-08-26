@@ -36,7 +36,7 @@ export class GitContentProvider implements vscode.TextDocumentContentProvider {
   private readonly cache = new Map<string, string>();
 
   public constructor(
-    private readonly git: Pick<GitAdapter, 'readBlob' | 'getBlobSize'>,
+    private readonly git: Pick<GitAdapter, 'readBlob' | 'getBlobSize' | 'readBlobObject' | 'getBlobObjectSize'>,
     private readonly repositoryRegistry: RepositoryRegistry,
   ) {}
 
@@ -62,12 +62,16 @@ export class GitContentProvider implements vscode.TextDocumentContentProvider {
       throw new UnknownRepositoryError(ref.repositoryId);
     }
 
-    const byteLength = await this.git.getBlobSize(repository.rootUri.fsPath, ref.commit, ref.path, token);
+    const byteLength = ref.objectId
+      ? await this.git.getBlobObjectSize(repository.rootUri.fsPath, ref.objectId, token)
+      : await this.git.getBlobSize(repository.rootUri.fsPath, ref.commit, ref.path, token);
     if (byteLength > maxBlobBytes) {
       throw new BlobTooLargeError(byteLength);
     }
 
-    const blob = await this.git.readBlob(repository.rootUri.fsPath, ref.commit, ref.path, token);
+    const blob = ref.objectId
+      ? await this.git.readBlobObject(repository.rootUri.fsPath, ref.objectId, token)
+      : await this.git.readBlob(repository.rootUri.fsPath, ref.commit, ref.path, token);
     if (blob.byteLength > maxBlobBytes) {
       throw new BlobTooLargeError(blob.byteLength);
     }
@@ -111,8 +115,8 @@ function createDiffRefs(
 ): { left: VirtualDocumentRef; right: VirtualDocumentRef; displayPath: string } {
   if (target.kind === 'unchanged') {
     return {
-      left: documentRef(repositoryId, result.mergeBaseSha, target.path, false),
-      right: documentRef(repositoryId, result.compareSha, target.path, false),
+      left: documentRef(repositoryId, result.mergeBaseSha, target.path, false, target.pathKey, target.blobOid),
+      right: documentRef(repositoryId, result.compareSha, target.path, false, target.pathKey, target.blobOid),
       displayPath: target.path,
     };
   }
@@ -130,8 +134,8 @@ function createChangedDiffRefs(
       const oldPath = requiredPath(file.oldPath, 'modified file old path');
       const newPath = requiredPath(file.newPath, 'modified file new path');
       return {
-        left: documentRef(repositoryId, result.mergeBaseSha, oldPath, false),
-        right: documentRef(repositoryId, result.compareSha, newPath, false),
+        left: documentRef(repositoryId, result.mergeBaseSha, oldPath, false, file.oldPathKey, file.oldBlobOid),
+        right: documentRef(repositoryId, result.compareSha, newPath, false, file.newPathKey, file.newBlobOid),
         displayPath: newPath,
       };
     }
@@ -139,14 +143,14 @@ function createChangedDiffRefs(
       const newPath = requiredPath(file.newPath, 'added file new path');
       return {
         left: documentRef(repositoryId, result.mergeBaseSha, newPath, true),
-        right: documentRef(repositoryId, result.compareSha, newPath, false),
+        right: documentRef(repositoryId, result.compareSha, newPath, false, file.newPathKey, file.newBlobOid),
         displayPath: newPath,
       };
     }
     case 'deleted': {
       const oldPath = requiredPath(file.oldPath, 'deleted file old path');
       return {
-        left: documentRef(repositoryId, result.mergeBaseSha, oldPath, false),
+        left: documentRef(repositoryId, result.mergeBaseSha, oldPath, false, file.oldPathKey, file.oldBlobOid),
         right: documentRef(repositoryId, result.compareSha, oldPath, true),
         displayPath: oldPath,
       };
@@ -155,8 +159,8 @@ function createChangedDiffRefs(
       const oldPath = requiredPath(file.oldPath, 'renamed file old path');
       const newPath = requiredPath(file.newPath, 'renamed file new path');
       return {
-        left: documentRef(repositoryId, result.mergeBaseSha, oldPath, false),
-        right: documentRef(repositoryId, result.compareSha, newPath, false),
+        left: documentRef(repositoryId, result.mergeBaseSha, oldPath, false, file.oldPathKey, file.oldBlobOid),
+        right: documentRef(repositoryId, result.compareSha, newPath, false, file.newPathKey, file.newBlobOid),
         displayPath: newPath,
       };
     }
@@ -168,8 +172,12 @@ function documentRef(
   commit: string,
   path: string,
   empty: boolean,
+  pathKey?: string,
+  objectId?: string,
 ): VirtualDocumentRef {
-  return { repositoryId, commit, path, empty };
+  return pathKey && objectId
+    ? { repositoryId, commit, path, pathKey, objectId, empty }
+    : { repositoryId, commit, path, empty };
 }
 
 function requiredPath(path: string | undefined, description: string): string {
@@ -180,5 +188,5 @@ function requiredPath(path: string | undefined, description: string): string {
 }
 
 function createCacheKey(ref: VirtualDocumentRef): string {
-  return `${ref.repositoryId}\0${ref.commit}\0${ref.path}`;
+  return `${ref.repositoryId}\0${ref.commit}\0${ref.objectId ?? ref.path}`;
 }

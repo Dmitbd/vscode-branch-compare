@@ -1,18 +1,21 @@
 import type { LineChanges } from '../domain/model';
 import { GitOutputError } from './GitOutputError';
+import { gitPath, splitNul } from './gitPath';
 
 export interface NumStatRecord {
   readonly oldPath: string;
   readonly newPath: string;
+  readonly oldPathKey?: string;
+  readonly newPathKey?: string;
   readonly lineChanges: LineChanges;
 }
 
 export function parseNumStat(output: Buffer): NumStatRecord[] {
-  const fields = output.toString('utf8').split('\0');
-  if (fields.at(-1) === '') fields.pop();
+  const fields = splitNul(output, 'Invalid numstat output.');
   const records: NumStatRecord[] = [];
   for (let index = 0; index < fields.length;) {
-    const header = fields[index++];
+    const headerBuffer = fields[index++];
+    const header = headerBuffer?.toString('ascii');
     if (header === undefined) throw invalid();
     const firstTab = header.indexOf('\t');
     const secondTab = firstTab < 0 ? -1 : header.indexOf('\t', firstTab + 1);
@@ -21,15 +24,15 @@ export function parseNumStat(output: Buffer): NumStatRecord[] {
       header.slice(0, firstTab),
       header.slice(firstTab + 1, secondTab),
     );
-    const path = header.slice(secondTab + 1);
-    if (path !== '') {
-      records.push({ oldPath: path, newPath: path, lineChanges });
+    const pathBytes = headerBuffer.subarray(secondTab + 1);
+    if (pathBytes.length !== 0) {
+      const path = gitPath(pathBytes);
+      records.push({ oldPath: path.path, newPath: path.path, oldPathKey: path.pathKey, newPathKey: path.pathKey, lineChanges });
       continue;
     }
-    const oldPath = fields[index++];
-    const newPath = fields[index++];
-    if (!oldPath || !newPath) throw invalid();
-    records.push({ oldPath, newPath, lineChanges });
+    const oldPath = gitPath(fields[index++] ?? Buffer.alloc(0));
+    const newPath = gitPath(fields[index++] ?? Buffer.alloc(0));
+    records.push({ oldPath: oldPath.path, newPath: newPath.path, oldPathKey: oldPath.pathKey, newPathKey: newPath.pathKey, lineChanges });
   }
   return records;
 }

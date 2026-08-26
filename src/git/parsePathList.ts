@@ -1,23 +1,16 @@
 import { GitOutputError } from './GitOutputError';
+import type { TreePath } from '../domain/model';
+import { gitPath, splitNul } from './gitPath';
 
-export function parsePathList(output: Buffer): string[] {
-  const text = output.toString('utf8');
-  if (text === '') return [];
-  if (!text.endsWith('\0')) throw new GitOutputError('Invalid tree path output.');
-  const paths = text.slice(0, -1).split('\0');
-  if (paths.some((path) => !isRepositoryRelativePath(path))) {
-    throw new GitOutputError('Invalid tree path output.');
-  }
-  return paths;
-}
-
-function isRepositoryRelativePath(path: string): boolean {
-  if (
-    path.length === 0
-    || path.includes('\0')
-    || path.startsWith('/')
-  ) {
-    return false;
-  }
-  return !path.split('/').some((segment) => segment === '.' || segment === '..');
+export function parsePathList(output: Buffer): TreePath[] {
+  if (output.length > 0 && output.at(-1) !== 0) throw new GitOutputError('Invalid tree path output.');
+  return splitNul(output, 'Invalid tree path output.').map((record) => {
+    const tab = record.indexOf(0x09);
+    if (tab < 0) return gitPath(record).path;
+    const header = record.subarray(0, tab).toString('ascii');
+    const match = /^[0-7]{6} blob ([0-9a-f]{40,64})$/.exec(header);
+    if (!match) throw new GitOutputError('Invalid tree path output.');
+    const identity = gitPath(record.subarray(tab + 1));
+    return Object.freeze({ ...identity, blobOid: match[1] });
+  });
 }

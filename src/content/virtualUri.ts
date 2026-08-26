@@ -10,6 +10,8 @@ export interface VirtualDocumentRef {
   readonly repositoryId: string;
   readonly commit: string;
   readonly path: string;
+  readonly pathKey?: string;
+  readonly objectId?: string;
   readonly empty: boolean;
 }
 
@@ -73,11 +75,12 @@ function validateRef(value: unknown): VirtualDocumentRef {
   }
 
   const keys = Object.keys(value).sort();
-  if (keys.join(',') !== 'commit,empty,path,repositoryId') {
+  const keyList = keys.join(',');
+  if (keyList !== 'commit,empty,path,repositoryId' && keyList !== 'commit,empty,objectId,path,pathKey,repositoryId') {
     throw new InvalidVirtualUriError();
   }
 
-  const { repositoryId, commit, path, empty } = value;
+  const { repositoryId, commit, path, pathKey, objectId, empty } = value;
   if (
     typeof repositoryId !== 'string'
     || !repositoryIdPattern.test(repositoryId)
@@ -86,11 +89,17 @@ function validateRef(value: unknown): VirtualDocumentRef {
     || typeof path !== 'string'
     || !isRepositoryRelativePath(path)
     || typeof empty !== 'boolean'
+    || (keyList.includes('objectId') && (
+      typeof objectId !== 'string' || !shaPattern.test(objectId)
+      || typeof pathKey !== 'string' || !base64UrlPattern.test(pathKey)
+    ))
   ) {
     throw new InvalidVirtualUriError();
   }
 
-  return Object.freeze({ repositoryId, commit, path, empty });
+  return typeof pathKey === 'string' && typeof objectId === 'string'
+    ? Object.freeze({ repositoryId, commit, path, pathKey, objectId, empty })
+    : Object.freeze({ repositoryId, commit, path, empty });
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

@@ -48,6 +48,7 @@ export interface ViewFileNode {
   readonly binary: boolean;
   readonly target: DiffTarget;
   readonly generation: number;
+  readonly pathKey?: string;
 }
 
 export type ViewTreeNode = ViewFolderNode | ViewFileNode;
@@ -92,6 +93,7 @@ export interface TreeModelInput {
 interface MutableFolder {
   readonly label: string;
   readonly path: string;
+  readonly displayPath: string;
   readonly folders: Map<string, MutableFolder>;
   readonly files: ViewFileNode[];
 }
@@ -155,13 +157,15 @@ function createChangedNodes(
     const path = displayPath(sourceFile);
     const file = immutableChangedFile(sourceFile);
     const status = presentationStatus(file);
+    const pathKey = file.newPathKey ?? file.oldPathKey ?? Buffer.from(path).toString('base64url');
     const binary = file.lineChanges?.additions === null || file.lineChanges?.deletions === null;
     const target = Object.freeze({ kind: 'changed' as const, file });
-    nodes.set(path, Object.freeze({
-      id: fileId(target.kind, path),
+    nodes.set(pathKey, Object.freeze({
+      id: fileId(target.kind, pathIdentity(path, pathKey)),
       kind: 'file',
       label: basename(path),
       path,
+      pathKey,
       status,
       additions: binary ? '—' : metric(file.lineChanges?.additions),
       deletions: binary ? '—' : metric(file.lineChanges?.deletions),
@@ -179,20 +183,24 @@ function addUnchangedNodes(
   completeTree: CompleteTreePaths,
   generation: number,
 ): void {
-  const completePaths = new Set([
+  const completePaths = new Map([
     ...completeTree.mergeBasePaths,
     ...completeTree.comparePaths,
-  ]);
-  for (const path of completePaths) {
-    if (nodes.has(path) || excludedPaths.has(path)) {
+  ].map((entry) => [treePathKey(entry), entry] as const));
+  for (const [pathKey, entry] of completePaths) {
+    const path = typeof entry === 'string' ? entry : entry.path;
+    if (nodes.has(pathKey) || excludedPaths.has(pathKey)) {
       continue;
     }
-    const target = Object.freeze({ kind: 'unchanged' as const, path });
-    nodes.set(path, Object.freeze({
-      id: fileId(target.kind, path),
+    const target = typeof entry === 'string'
+      ? Object.freeze({ kind: 'unchanged' as const, path })
+      : Object.freeze({ kind: 'unchanged' as const, path, pathKey, blobOid: entry.blobOid });
+    nodes.set(pathKey, Object.freeze({
+      id: fileId(target.kind, pathIdentity(path, pathKey)),
       kind: 'file',
       label: basename(path),
       path,
+      pathKey,
       status: undefined,
       additions: undefined,
       deletions: undefined,
@@ -207,31 +215,35 @@ function changedPaths(files: readonly ChangedFile[]): ReadonlySet<string> {
   const paths = new Set<string>();
   for (const file of files) {
     if (file.oldPath) {
-      paths.add(file.oldPath);
+      paths.add(file.oldPathKey ?? Buffer.from(file.oldPath).toString('base64url'));
     }
     if (file.newPath) {
-      paths.add(file.newPath);
+      paths.add(file.newPathKey ?? Buffer.from(file.newPath).toString('base64url'));
     }
   }
   return paths;
 }
 
 function createTree(files: Iterable<ViewFileNode>): readonly ViewTreeNode[] {
-  const root: MutableFolder = { label: '', path: '', folders: new Map(), files: [] };
+  const root: MutableFolder = { label: '', path: '', displayPath: '', folders: new Map(), files: [] };
 
   for (const file of files) {
     const segments = file.path.split('/').filter(Boolean);
+    const segmentKeys = file.pathKey ? rawSegmentKeys(file.pathKey) : segments;
     if (segments.length === 0) {
       continue;
     }
     segments.pop();
     let parent = root;
-    for (const segment of segments) {
-      const path = parent.path ? `${parent.path}/${segment}` : segment;
-      let folder = parent.folders.get(segment);
+    for (const [index, segment] of segments.entries()) {
+      const displayPath = parent.displayPath ? `${parent.displayPath}/${segment}` : segment;
+      const folderKey = segmentKeys[index] ?? segment;
+      const rawFolderKey = joinRawSegmentKeys(segmentKeys.slice(0, index + 1));
+      const path = pathIdentity(displayPath, rawFolderKey);
+      let folder = parent.folders.get(folderKey);
       if (!folder) {
-        folder = { label: segment, path, folders: new Map(), files: [] };
-        parent.folders.set(segment, folder);
+        folder = { label: segment, path, displayPath, folders: new Map(), files: [] };
+        parent.folders.set(folderKey, folder);
       }
       parent = folder;
     }
@@ -319,8 +331,39 @@ function immutableChangedFile(file: ChangedFile): ChangedFile {
     status: file.status,
     oldPath: file.oldPath,
     newPath: file.newPath,
+    oldPathKey: file.oldPathKey,
+    newPathKey: file.newPathKey,
+    oldBlobOid: file.oldBlobOid,
+    newBlobOid: file.newBlobOid,
     lineChanges: file.lineChanges ? Object.freeze({ ...file.lineChanges }) : undefined,
   });
+}
+
+function treePathKey(path: import('../domain/model').TreePath): string {
+  return typeof path === 'string' ? Buffer.from(path).toString('base64url') : path.pathKey;
+}
+
+function pathIdentity(path: string, pathKey: string): string {
+  return Buffer.from(path).toString('base64url') === pathKey ? path : `raw:${pathKey}`;
+}
+
+function rawSegmentKeys(pathKey: string): string[] {
+  const raw = Buffer.from(pathKey, 'base64url');
+  const keys: string[] = [];
+  let start = 0;
+  for (let index = 0; index <= raw.length; index += 1) {
+    if (index === raw.length || raw[index] === 0x2f) {
+      keys.push(raw.subarray(start, index).toString('base64url'));
+      start = index + 1;
+    }
+  }
+  return keys;
+}
+
+function joinRawSegmentKeys(keys: readonly string[]): string {
+  return Buffer.concat(keys.flatMap((key, index) => (
+    index === 0 ? [Buffer.from(key, 'base64url')] : [Buffer.from('/'), Buffer.from(key, 'base64url')]
+  ))).toString('base64url');
 }
 
 function displayPath(file: ChangedFile): string {

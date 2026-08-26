@@ -1,5 +1,5 @@
 import type { CancellationToken } from 'vscode';
-import type { ChangedFile, GitRef } from '../domain/model';
+import type { ChangedFile, GitRef, TreePath } from '../domain/model';
 import { GitOutputError } from './GitOutputError';
 import { GitCommandError, GitCommandRunner, type CommandRunner } from './commandRunner';
 import { parseNameStatus } from './parseNameStatus';
@@ -25,9 +25,11 @@ export interface GitAdapter {
     toSha: string,
     token?: CancellationToken,
   ): Promise<readonly ChangedFile[]>;
-  listTreePaths(root: string, commit: string, token?: CancellationToken): Promise<readonly string[]>;
+  listTreePaths(root: string, commit: string, token?: CancellationToken): Promise<readonly TreePath[]>;
   readBlob(root: string, commit: string, path: string, token?: CancellationToken): Promise<Buffer>;
   getBlobSize(root: string, commit: string, path: string, token?: CancellationToken): Promise<number>;
+  readBlobObject(root: string, objectId: string, token?: CancellationToken): Promise<Buffer>;
+  getBlobObjectSize(root: string, objectId: string, token?: CancellationToken): Promise<number>;
   fetch(root: string, remote: string, token?: CancellationToken): Promise<void>;
 }
 
@@ -113,7 +115,8 @@ export class DefaultGitAdapter implements GitAdapter {
         'diff',
         '--no-ext-diff',
         '--no-textconv',
-        '--name-status',
+        '--raw',
+        '--abbrev=64',
         '-z',
         '--find-renames',
         fromSha,
@@ -140,11 +143,11 @@ export class DefaultGitAdapter implements GitAdapter {
     root: string,
     commit: string,
     token?: CancellationToken,
-  ): Promise<readonly string[]> {
+  ): Promise<readonly TreePath[]> {
     validateSha(commit);
     return parsePathList(await this.runLocal(
       root,
-      ['ls-tree', '-r', '--name-only', '-z', commit, '--'],
+      ['ls-tree', '-r', '-z', commit, '--'],
       token,
     ));
   }
@@ -178,6 +181,16 @@ export class DefaultGitAdapter implements GitAdapter {
     return size;
   }
 
+  public readBlobObject(root: string, objectId: string, token?: CancellationToken): Promise<Buffer> {
+    validateSha(objectId);
+    return this.runLocal(root, ['cat-file', '-p', objectId], token);
+  }
+
+  public async getBlobObjectSize(root: string, objectId: string, token?: CancellationToken): Promise<number> {
+    validateSha(objectId);
+    return parseBlobSize(await this.runLocal(root, ['cat-file', '-s', objectId], token));
+  }
+
   public async fetch(root: string, remote: string, token?: CancellationToken): Promise<void> {
     validateRemoteName(remote);
     await this.runner.run(root, [
@@ -207,7 +220,7 @@ export function attachLineChanges(
 ): readonly ChangedFile[] {
   const statsByPathPair = new Map<string, NumStatRecord[]>();
   for (const stat of stats) {
-    const key = pathPairKey(stat.oldPath, stat.newPath);
+    const key = pathPairKey(stat.oldPathKey ?? utf8Key(stat.oldPath), stat.newPathKey ?? utf8Key(stat.newPath));
     const bucket = statsByPathPair.get(key);
     if (bucket) {
       bucket.push(stat);
@@ -247,13 +260,26 @@ function statPaths(file: ChangedFile): readonly [string, string] {
     if (!file.oldPath || !file.newPath) {
       throw new GitOutputError('Missing path for renamed file.');
     }
-    return [file.oldPath, file.newPath];
+    return [file.oldPathKey ?? utf8Key(file.oldPath), file.newPathKey ?? utf8Key(file.newPath)];
   }
   const path = file.newPath ?? file.oldPath;
   if (!path) {
     throw new GitOutputError('Missing path for changed file.');
   }
-  return [path, path];
+  const key = file.newPathKey ?? file.oldPathKey ?? utf8Key(path);
+  return [key, key];
+}
+
+function utf8Key(path: string): string {
+  return Buffer.from(path, 'utf8').toString('base64url');
+}
+
+function parseBlobSize(output: Buffer): number {
+  const value = output.toString('utf8').trim();
+  if (!/^(?:0|[1-9][0-9]*)$/.test(value)) throw new GitOutputError('Invalid blob size output.');
+  const size = Number(value);
+  if (!Number.isSafeInteger(size)) throw new GitOutputError('Blob size exceeds the supported numeric range.');
+  return size;
 }
 
 function pathPairKey(oldPath: string, newPath: string): string {

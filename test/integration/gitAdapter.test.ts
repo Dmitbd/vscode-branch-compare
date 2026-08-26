@@ -120,9 +120,9 @@ describe('DefaultGitAdapter', () => {
   test('lists every path from each commit tree without changing repository state', async () => {
     const before = await repo.snapshot();
 
-    await expect(adapter.listTreePaths(repo.root, branchPoint))
+    await expect(adapter.listTreePaths(repo.root, branchPoint).then((entries) => entries.map((entry) => typeof entry === 'string' ? entry : entry.path)))
       .resolves.toEqual(['binary.dat', 'notes.txt', 'old name.txt']);
-    await expect(adapter.listTreePaths(repo.root, featureCommit))
+    await expect(adapter.listTreePaths(repo.root, featureCommit).then((entries) => entries.map((entry) => typeof entry === 'string' ? entry : entry.path)))
       .resolves.toEqual(['binary.dat', 'notes.txt', 'renamed ü file.txt']);
 
     expect(await repo.snapshot()).toEqual(before);

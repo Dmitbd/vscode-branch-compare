@@ -253,4 +253,26 @@ describe('openFullDiff', () => {
     expect(parseVirtualUri(leftUri as never).path).toBe(path);
     expect(parseVirtualUri(rightUri as never).path).toBe(path);
   });
+
+  test('opens an invalid-byte renamed path by immutable blob OID without path argv', async () => {
+    const oldBlobOid = '1'.repeat(40);
+    const newBlobOid = '2'.repeat(40);
+    const oldPathKey = Buffer.from([0x6f, 0x6c, 0x64, 0xff]).toString('base64url');
+    const newPathKey = Buffer.from([0x6e, 0x65, 0x77, 0xfe]).toString('base64url');
+    await openFullDiff(repositoryId, result, { kind: 'changed', file: {
+      status: 'renamed', oldPath: 'old\\xFF', newPath: 'new\\xFE',
+      oldPathKey, newPathKey, oldBlobOid, newBlobOid,
+    } }, 'origin/main', 'feature/x');
+    const [, leftUri, rightUri] = vi.mocked(commands.executeCommand).mock.calls[0];
+    const readBlobObject = vi.fn(async (_root: string, oid: string) => Buffer.from(oid === oldBlobOid ? 'old' : 'new'));
+    const contentProvider = new GitContentProvider({
+      readBlob: vi.fn(), getBlobSize: vi.fn(), readBlobObject,
+      getBlobObjectSize: vi.fn(async () => 3),
+    }, { repositories: [repository] });
+
+    await expect(contentProvider.provideTextDocumentContent(leftUri as never)).resolves.toBe('old');
+    await expect(contentProvider.provideTextDocumentContent(rightUri as never)).resolves.toBe('new');
+    expect(readBlobObject).toHaveBeenNthCalledWith(1, root, oldBlobOid, undefined);
+    expect(readBlobObject).toHaveBeenNthCalledWith(2, root, newBlobOid, undefined);
+  });
 });

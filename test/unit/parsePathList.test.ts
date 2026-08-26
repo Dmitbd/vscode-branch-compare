@@ -2,6 +2,22 @@ import { describe, expect, test } from 'vitest';
 import { parsePathList } from '../../src/git/parsePathList';
 
 describe('parsePathList', () => {
+  test('returns lossless path keys and blob OIDs for invalid UTF-8 tree names', () => {
+    const firstOid = 'a'.repeat(40);
+    const secondOid = 'b'.repeat(40);
+    const output = Buffer.concat([
+      Buffer.from(`100644 blob ${firstOid}\tbad-`, 'ascii'), Buffer.from([0xff]), Buffer.from('.ts\0', 'ascii'),
+      Buffer.from(`100644 blob ${secondOid}\tbad-`, 'ascii'), Buffer.from([0xfe]), Buffer.from('.ts\0', 'ascii'),
+    ]);
+
+    const entries = parsePathList(output);
+
+    expect(entries.map((entry) => entry.pathKey)).toEqual([
+      Buffer.concat([Buffer.from('bad-'), Buffer.from([0xff]), Buffer.from('.ts')]).toString('base64url'),
+      Buffer.concat([Buffer.from('bad-'), Buffer.from([0xfe]), Buffer.from('.ts')]).toString('base64url'),
+    ]);
+    expect(entries.map((entry) => entry.blobOid)).toEqual([firstOid, secondOid]);
+  });
   test('parses NUL-delimited Unicode paths', () => {
     expect(parsePathList(Buffer.from('README.md\0src/файл.ts\0')))
       .toEqual(['README.md', 'src/файл.ts']);

@@ -1,5 +1,6 @@
 import type { ChangedFile, ChangedFileStatus } from '../domain/model';
 import { GitOutputError } from './GitOutputError';
+import { gitPath, splitNul } from './gitPath';
 
 const statusByCode: Readonly<Record<string, ChangedFileStatus>> = {
   A: 'added',
@@ -8,40 +9,32 @@ const statusByCode: Readonly<Record<string, ChangedFileStatus>> = {
 };
 
 export function parseNameStatus(output: Buffer): ChangedFile[] {
-  const fields = output.toString('utf8').split('\0');
-  if (fields.at(-1) === '') {
-    fields.pop();
-  }
+  return parseRaw(output);
+}
 
+function parseRaw(output: Buffer): ChangedFile[] {
+  const fields = splitNul(output, 'Invalid raw diff output.');
   const files: ChangedFile[] = [];
   for (let index = 0; index < fields.length;) {
-    const statusField = fields[index++];
-    if (!statusField) {
-      throw new GitOutputError('Invalid name-status output.');
+    const header = fields[index++]?.toString('ascii');
+    const match = /^:[0-7]{6} [0-7]{6} ([0-9a-f]{40,64}) ([0-9a-f]{40,64}) ([ADM]|R\d*)$/.exec(header ?? '');
+    if (!match) throw new GitOutputError('Invalid raw diff output.');
+    const [, oldBlobOid, newBlobOid, code] = match;
+    const oldPathIdentity = gitPath(fields[index++] ?? Buffer.alloc(0));
+    if (code.startsWith('R')) {
+      const newPathIdentity = gitPath(fields[index++] ?? Buffer.alloc(0));
+      files.push({ status: 'renamed', oldPath: oldPathIdentity.path, newPath: newPathIdentity.path,
+        oldPathKey: oldPathIdentity.pathKey, newPathKey: newPathIdentity.pathKey, oldBlobOid, newBlobOid });
+    } else {
+      const status = statusByCode[code];
+      if (!status) throw new GitOutputError('Unknown status in raw diff output.');
+      files.push({ ...toChangedFile(status, oldPathIdentity.path),
+        oldPathKey: status === 'added' ? undefined : oldPathIdentity.pathKey,
+        newPathKey: status === 'deleted' ? undefined : oldPathIdentity.pathKey,
+        oldBlobOid: status === 'added' ? undefined : oldBlobOid,
+        newBlobOid: status === 'deleted' ? undefined : newBlobOid });
     }
-
-    if (/^R\d*$/.test(statusField)) {
-      const oldPath = fields[index++];
-      const newPath = fields[index++];
-      if (!oldPath || !newPath) {
-        throw new GitOutputError('Truncated rename record in name-status output.');
-      }
-      files.push({ status: 'renamed', oldPath, newPath });
-      continue;
-    }
-
-    const status = statusByCode[statusField];
-    if (!status) {
-      throw new GitOutputError('Unknown status in name-status output.');
-    }
-
-    const path = fields[index++];
-    if (!path) {
-      throw new GitOutputError('Truncated record in name-status output.');
-    }
-    files.push(toChangedFile(status, path));
   }
-
   return files;
 }
 

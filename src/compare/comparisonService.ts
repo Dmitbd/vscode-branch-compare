@@ -5,6 +5,7 @@ import type {
   ComparisonResult,
   ComparisonSelection,
   CompleteTreePaths,
+  TreePath,
 } from '../domain/model';
 import { GitCommandCancelledError, GitCommandError } from '../git/commandRunner';
 import type { GitAdapter } from '../git/gitAdapter';
@@ -180,20 +181,28 @@ function displayPath(file: ChangedFile): string {
   return displayPath;
 }
 
-function freezeSortedPaths(paths: readonly string[]): readonly string[] {
-  if (new Set(paths).size !== paths.length) {
+function freezeSortedPaths(paths: readonly TreePath[]): readonly TreePath[] {
+  if (new Set(paths.map(pathKey)).size !== paths.length) {
     throw new TypeError('Duplicate tree path.');
   }
   return Object.freeze([...paths].sort(comparePaths));
 }
 
-function comparePaths(left: string, right: string): number {
+function comparePaths(left: TreePath, right: TreePath): number {
+  const leftDisplay = typeof left === 'string' ? left : left.path;
+  const rightDisplay = typeof right === 'string' ? right : right.path;
   const displayOrder = displayPathCollator.compare(
-    left.normalize('NFC'),
-    right.normalize('NFC'),
+    leftDisplay.normalize('NFC'),
+    rightDisplay.normalize('NFC'),
   );
   if (displayOrder !== 0) {
     return displayOrder;
   }
-  return left < right ? -1 : left > right ? 1 : 0;
+  const leftKey = pathKey(left);
+  const rightKey = pathKey(right);
+  return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
+}
+
+function pathKey(path: TreePath): string {
+  return typeof path === 'string' ? Buffer.from(path).toString('base64url') : path.pathKey;
 }

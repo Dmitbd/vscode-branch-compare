@@ -13,6 +13,10 @@ export interface ChangedFile {
   readonly status: ChangedFileStatus;
   readonly oldPath: string | undefined;
   readonly newPath: string | undefined;
+  readonly oldPathKey?: string;
+  readonly newPathKey?: string;
+  readonly oldBlobOid?: string;
+  readonly newBlobOid?: string;
   readonly lineChanges?: LineChanges;
 }
 
@@ -23,7 +27,7 @@ export interface LineChanges {
 
 export type DiffTarget =
   | { readonly kind: 'changed'; readonly file: ChangedFile }
-  | { readonly kind: 'unchanged'; readonly path: string };
+  | { readonly kind: 'unchanged'; readonly path: string; readonly pathKey?: string; readonly blobOid?: string };
 
 export interface ChangeSummary {
   readonly files: number;
@@ -47,6 +51,12 @@ export interface ComparisonResult {
 }
 
 export interface CompleteTreePaths {
-  readonly mergeBasePaths: readonly string[];
-  readonly comparePaths: readonly string[];
+  readonly mergeBasePaths: readonly TreePath[];
+  readonly comparePaths: readonly TreePath[];
 }
+
+export type TreePath = string | {
+  readonly path: string;
+  readonly pathKey: string;
+  readonly blobOid: string;
+};
