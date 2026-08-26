@@ -97,6 +97,7 @@ interface MutableFolder {
 }
 
 const displayPathCollator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
+const maximumInitialFolderChildren = 200;
 
 export function formatMetric(value: number): string {
   if (value <= 9999) {
@@ -306,7 +307,11 @@ function initialExpandedPaths(nodes: readonly ViewTreeNode[]): readonly string[]
   const firstFolder = nodes.find((node): node is ViewFolderNode => (
     node.kind === 'folder' && node.children.length > 0
   ));
-  return Object.freeze(firstFolder ? [firstFolder.path] : []);
+  return Object.freeze(
+    firstFolder && firstFolder.children.length <= maximumInitialFolderChildren
+      ? [firstFolder.path]
+      : [],
+  );
 }
 
 function immutableChangedFile(file: ChangedFile): ChangedFile {

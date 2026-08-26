@@ -168,6 +168,7 @@ describe('buildTreeModel', () => {
       counts: { added: 10_000, modified: 0, deleted: 0 },
       formattedCounts: { added: '10k', modified: '0', deleted: '0' },
     });
+    expect(model.initialExpandedPaths).toEqual([]);
   });
 
   test('suggests only the first non-empty top-level folder for initial expansion', () => {

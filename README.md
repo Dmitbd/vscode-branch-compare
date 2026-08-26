@@ -13,6 +13,7 @@ The extension never edits files, stages changes, switches branches, merges, reba
 ## Installation
 
 Version 0.1.2 is distributed as a VSIX from this repository; Marketplace publication is not part of this release.
+Requires VS Code 1.96 or newer and Git 2.45 or newer.
 
 1. Build or download `branch-compare-viewer-0.1.2.vsix`.
 2. In VS Code, open **Extensions**.
@@ -80,7 +81,7 @@ Both diff documents use the extension's virtual `branch-compare` scheme and have
 
 ## Development
 
-Requires Node.js 20+, npm, Git, and VS Code 1.96 or newer.
+Requires Node.js 20+, npm, Git 2.45 or newer, and VS Code 1.96 or newer.
 
 ### Cursor development sandbox
 

@@ -45,4 +45,8 @@ describe('extension manifest', () => {
     expect(readme).not.toContain('shows `BASE` below `COMPARE`');
     expect(readme).not.toContain('upward arrow from BASE to COMPARE');
   });
+
+  it('documents the minimum Git version required by the local-only read boundary', () => {
+    expect(readme).toContain('Git 2.45 or newer');
+  });
 });
