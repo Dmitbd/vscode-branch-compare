@@ -19,6 +19,7 @@ describe('DefaultGitAdapter', () => {
 
     await repo.write('old name.txt', 'rename me\n');
     await repo.write('binary.dat', Buffer.from([0x01]));
+    await repo.write('notes.txt', 'keep\nremove\n');
     branchPoint = await repo.commit('base');
 
     await repo.git(['switch', '-c', 'feature']);
@@ -27,6 +28,7 @@ describe('DefaultGitAdapter', () => {
       path.join(repo.root, 'renamed ü file.txt'),
     );
     await repo.write('binary.dat', blobContents);
+    await repo.write('notes.txt', 'keep\nadded one\nadded two\n');
     featureCommit = await repo.commit('feature change');
 
     await repo.git(['switch', 'main']);
@@ -92,11 +94,24 @@ describe('DefaultGitAdapter', () => {
   });
 
   test('preserves rename paths and Unicode filenames', async () => {
-    await expect(adapter.listChangedFiles(repo.root, branchPoint, featureCommit))
-      .resolves.toEqual([
-        { status: 'modified', oldPath: 'binary.dat', newPath: 'binary.dat' },
-        { status: 'renamed', oldPath: 'old name.txt', newPath: 'renamed ü file.txt' },
-      ]);
+    const files = await adapter.listChangedFiles(repo.root, branchPoint, featureCommit);
+
+    expect(files).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        status: 'modified',
+        newPath: 'notes.txt',
+        lineChanges: { additions: 2, deletions: 1 },
+      }),
+      expect.objectContaining({
+        newPath: 'binary.dat',
+        lineChanges: { additions: null, deletions: null },
+      }),
+      expect.objectContaining({
+        status: 'renamed',
+        oldPath: 'old name.txt',
+        newPath: 'renamed ü file.txt',
+      }),
+    ]));
   });
 
   test('reads blob contents as exact bytes', async () => {

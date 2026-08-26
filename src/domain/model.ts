@@ -13,6 +13,12 @@ export interface ChangedFile {
   readonly status: ChangedFileStatus;
   readonly oldPath: string | undefined;
   readonly newPath: string | undefined;
+  readonly lineChanges?: LineChanges;
+}
+
+export interface LineChanges {
+  readonly additions: number | null;
+  readonly deletions: number | null;
 }
 
 export interface ComparisonSelection {

@@ -49,6 +49,9 @@ describe('read-only workflow invariants', () => {
     await controller.refresh();
     expect(await invariantSnapshot(repo)).toEqual(before);
 
+    await adapter.listChangedFiles(repo.root, 'refs/heads/main', 'refs/heads/feature/x');
+    expect(await invariantSnapshot(repo)).toEqual(before);
+
     const changedFile: ChangedFile = { status: 'added', oldPath: undefined, newPath: 'feature.txt' };
     await controller.openDiff(changedFile, comparisonGeneration);
     expect(selectedDiff).toEqual(changedFile);

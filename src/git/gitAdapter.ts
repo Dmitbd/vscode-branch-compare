@@ -3,6 +3,7 @@ import type { ChangedFile, GitRef } from '../domain/model';
 import { GitOutputError } from './GitOutputError';
 import { GitCommandError, GitCommandRunner, type CommandRunner } from './commandRunner';
 import { parseNameStatus } from './parseNameStatus';
+import { parseNumStat } from './parseNumStat';
 import { parseRefs } from './parseRefs';
 
 const shaPattern = /^[0-9a-f]{40,64}$/;
@@ -102,16 +103,34 @@ export class DefaultGitAdapter implements GitAdapter {
     toSha: string,
     token?: CancellationToken,
   ): Promise<readonly ChangedFile[]> {
-    const output = await this.runner.run(root, [
-      'diff',
-      '--name-status',
-      '-z',
-      '--find-renames',
-      fromSha,
-      toSha,
-      '--',
-    ], token);
-    return parseNameStatus(output);
+    const [statusOutput, numStatOutput] = await Promise.all([
+      this.runner.run(root, [
+        'diff',
+        '--name-status',
+        '-z',
+        '--find-renames',
+        fromSha,
+        toSha,
+        '--',
+      ], token),
+      this.runner.run(root, [
+        'diff',
+        '--numstat',
+        '-z',
+        '--find-renames',
+        fromSha,
+        toSha,
+        '--',
+      ], token),
+    ]);
+    const stats = parseNumStat(numStatOutput);
+    return parseNameStatus(statusOutput).map((file) => {
+      const stat = stats.find((candidate) => file.status === 'renamed'
+        ? candidate.oldPath === file.oldPath && candidate.newPath === file.newPath
+        : candidate.newPath === (file.newPath ?? file.oldPath));
+      if (!stat) throw new GitOutputError('Missing numstat record for changed file.');
+      return { ...file, lineChanges: Object.freeze({ ...stat.lineChanges }) };
+    });
   }
 
   public readBlob(
