@@ -12,7 +12,18 @@ const options = {
 };
 
 if (process.argv.includes('--watch')) {
-  const context = await esbuild.context(options);
+  const watchReporter = {
+    name: 'watch-reporter',
+    setup(build) {
+      build.onStart(() => {
+        console.log('[watch] build started');
+      });
+      build.onEnd(() => {
+        console.log('[watch] build finished');
+      });
+    },
+  };
+  const context = await esbuild.context({ ...options, plugins: [watchReporter] });
   await context.watch();
 } else {
   await esbuild.build(options);

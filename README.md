@@ -74,6 +74,12 @@ Both diff documents use the extension's virtual `branch-compare` scheme and have
 
 Requires Node.js 20+, npm, Git, and VS Code 1.96 or newer.
 
+### Cursor development sandbox
+
+Open this repository in Cursor and press `F5`, then choose **Run Branch Compare in Cursor**. Cursor starts the esbuild watcher and opens a separate Extension Development Host window that loads the extension directly from this checkout. The normally installed VSIX is not replaced.
+
+Use **Developer: Reload Window** in the development window after manifest changes. You can open another Git repository in that window to test real branch comparisons.
+
 ```bash
 npm ci
 npm run typecheck
