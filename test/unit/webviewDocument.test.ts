@@ -19,6 +19,7 @@ describe('createWebviewDocument', () => {
     expect(html).toContain('свернуть все папки');
     expect(html).toContain('id="complete-tree-error"');
     expect(html).toContain('id="retry-complete-tree"');
+    expect(html).toContain('id="retry-comparison"');
     expect(html).toContain('>Refresh<');
     expect(html).not.toContain('merges into');
     expect(html).not.toMatch(/#[0-9a-f]{3,8}/i);
@@ -139,5 +140,23 @@ describe('createWebviewDocument', () => {
     expect(html).toContain('retryCompleteTree.hidden = !currentModel.canRetryCompleteTree');
     expect(retryHandler).toContain("vscode.postMessage({ type: 'toggle-unchanged' })");
     expect(retryHandler).not.toMatch(/fetch|checkout|switch/);
+  });
+
+  test('renders a main comparison error with a strictly local Refresh action', () => {
+    const html = createWebviewDocument({ cspSource: 'test:', nonce: 'nonce' });
+    const retryHandler = html.match(
+      /getElementById\('retry-comparison'\)\.addEventListener\('click', function \(\) \{([\s\S]*?)\n    \}\);/,
+    )?.[1];
+
+    expect(html).toContain('retryComparison.hidden = !currentModel.canRetry');
+    expect(retryHandler).toContain("vscode.postMessage({ type: 'refresh' })");
+    expect(retryHandler).not.toMatch(/fetch|checkout|switch/);
+  });
+
+  test('shows the active repository only for a multi-repository workspace', () => {
+    const html = createWebviewDocument({ cspSource: 'test:', nonce: 'nonce' });
+
+    expect(html).toContain('repositoryButton.textContent = currentModel.repositoryLabel');
+    expect(html).toContain('repositoryButton.hidden = !currentModel.showRepositorySelector');
   });
 });

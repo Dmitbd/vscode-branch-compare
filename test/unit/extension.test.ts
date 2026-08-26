@@ -113,6 +113,7 @@ describe('extension activation', () => {
     controller.selectBase.mockClear();
     controller.selectCompare.mockClear();
     controller.toggleUnchanged.mockClear();
+    controller.refresh.mockClear();
     controller.openDiff.mockClear();
     compareView.dispose.mockClear();
     viewRegistration.dispose.mockClear();
@@ -158,12 +159,14 @@ describe('extension activation', () => {
     receiveViewAction?.({ type: 'selectBase' });
     receiveViewAction?.({ type: 'selectCompare' });
     receiveViewAction?.({ type: 'toggleUnchanged' });
+    receiveViewAction?.({ type: 'refresh' });
     receiveViewAction?.({ type: 'openDiff', target, generation: 7 });
 
     expect(controller.selectRepository).toHaveBeenCalledOnce();
     expect(controller.selectBase).toHaveBeenCalledOnce();
     expect(controller.selectCompare).toHaveBeenCalledOnce();
     expect(controller.toggleUnchanged).toHaveBeenCalledOnce();
+    expect(controller.refresh).toHaveBeenCalledOnce();
     expect(controller.openDiff).toHaveBeenCalledWith(target, 7);
   });
 });

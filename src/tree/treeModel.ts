@@ -40,6 +40,8 @@ export interface ViewFileNode {
 export type ViewTreeNode = ViewFolderNode | ViewFileNode;
 
 export interface CompareViewModel {
+  readonly repositoryLabel: string;
+  readonly showRepositorySelector: boolean;
   readonly branches: {
     readonly base: string;
     readonly compare: string;
@@ -105,6 +107,8 @@ export function buildTreeModel(input: TreeModelInput): CompareViewModel {
   }
 
   const model: CompareViewModel = {
+    repositoryLabel: input.repository?.label ?? '',
+    showRepositorySelector: input.repositories.length > 1,
     branches: Object.freeze({
       base: displayRef(selection?.baseRef ?? input.baseRef, input.refs),
       compare: displayRef(selection?.compareRef ?? input.compareRef, input.refs),

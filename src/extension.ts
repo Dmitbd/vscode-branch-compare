@@ -46,6 +46,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Branch
       case 'selectBase': return void controller.selectBase();
       case 'selectCompare': return void controller.selectCompare();
       case 'toggleUnchanged': return void controller.toggleUnchanged();
+      case 'refresh': return void controller.refresh();
       case 'openDiff': return void controller.openDiff(action.target, action.generation);
     }
   });

@@ -91,6 +91,9 @@ export class CompareViewProvider implements vscode.WebviewViewProvider, vscode.D
       case 'toggle-unchanged':
         this.onDidReceiveActionEmitter.fire({ type: 'toggleUnchanged' });
         return;
+      case 'refresh':
+        this.onDidReceiveActionEmitter.fire({ type: 'refresh' });
+        return;
       case 'open-diff': {
         const trusted = this.trustedTargets.get(message.nodeId);
         if (trusted?.generation === message.generation) {

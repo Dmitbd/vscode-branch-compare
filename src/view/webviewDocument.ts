@@ -265,7 +265,10 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
       <span></span><span class="metric status-added" title="Added">A</span><span class="metric status-modified" title="Modified">M</span><span class="metric status-deleted" title="Deleted">D</span><span class="metric">+</span><span class="metric">−</span>
     </div>
     <p class="message" id="message" role="status" hidden></p>
-    <p class="message error" id="error" role="alert" hidden></p>
+    <div class="message error complete-tree-error" id="error" role="alert" hidden>
+      <span class="complete-tree-error-message" id="error-message"></span>
+      <button class="retry-button" id="retry-comparison" type="button">Refresh</button>
+    </div>
     <div class="message error complete-tree-error" id="complete-tree-error" role="alert" hidden>
       <span class="complete-tree-error-message" id="complete-tree-error-message"></span>
       <button class="retry-button" id="retry-complete-tree" type="button">Refresh</button>
@@ -281,10 +284,13 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
 
     const branchBase = document.getElementById('select-base');
     const branchCompare = document.getElementById('select-compare');
+    const repositoryButton = document.getElementById('select-repository');
     const summary = document.getElementById('summary');
     const tree = document.getElementById('tree');
     const message = document.getElementById('message');
     const error = document.getElementById('error');
+    const errorMessage = document.getElementById('error-message');
+    const retryComparison = document.getElementById('retry-comparison');
     const completeTreeError = document.getElementById('complete-tree-error');
     const completeTreeErrorMessage = document.getElementById('complete-tree-error-message');
     const retryCompleteTree = document.getElementById('retry-complete-tree');
@@ -292,7 +298,7 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
     const eyeOpen = toggleUnchanged.querySelector('.eye-open');
     const eyeClosed = toggleUnchanged.querySelector('.eye-closed');
 
-    document.getElementById('select-repository').addEventListener('click', function () {
+    repositoryButton.addEventListener('click', function () {
       vscode.postMessage({ type: 'select-repository' });
     });
     branchBase.addEventListener('click', function () { vscode.postMessage({ type: 'select-base' }); });
@@ -300,6 +306,9 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
     toggleUnchanged.addEventListener('click', function () { vscode.postMessage({ type: 'toggle-unchanged' }); });
     document.getElementById('retry-complete-tree').addEventListener('click', function () {
       vscode.postMessage({ type: 'toggle-unchanged' });
+    });
+    document.getElementById('retry-comparison').addEventListener('click', function () {
+      vscode.postMessage({ type: 'refresh' });
     });
     document.getElementById('collapse-all').addEventListener('click', function () {
       expandedPaths.clear();
@@ -315,6 +324,11 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
     });
 
     function render() {
+      repositoryButton.textContent = currentModel.repositoryLabel;
+      if (!repositoryButton.textContent) {
+        repositoryButton.textContent = 'выбрать репозиторий';
+      }
+      repositoryButton.hidden = !currentModel.showRepositorySelector;
       branchBase.textContent = currentModel.branches.base || '—';
       branchCompare.textContent = currentModel.branches.compare || '—';
       renderSummary();
@@ -351,7 +365,8 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
 
     function renderMessages() {
       error.hidden = !currentModel.error;
-      error.textContent = currentModel.error || '';
+      errorMessage.textContent = currentModel.error || '';
+      retryComparison.hidden = !currentModel.canRetry;
       completeTreeError.hidden = !currentModel.completeTreeError;
       completeTreeErrorMessage.textContent = currentModel.completeTreeError || '';
       retryCompleteTree.hidden = !currentModel.canRetryCompleteTree;

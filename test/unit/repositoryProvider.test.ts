@@ -14,12 +14,14 @@ import {
 
 interface FakeUri {
   readonly value: string;
+  readonly fsPath: string;
   toString(skipEncoding?: boolean): string;
 }
 
 function uri(value: string): FakeUri {
   return {
     value,
+    fsPath: value.replace(/^file:\/\//, ''),
     toString: (skipEncoding = false) => (skipEncoding ? value : encodeURI(value)),
   };
 }
@@ -81,12 +83,14 @@ describe('RepositoryProvider', () => {
     expect(provider.repositories).toEqual([
       {
         id: stableId('file:///workspace/alpha'),
+        label: 'alpha',
         rootUri: alpha.rootUri,
         currentBranch: undefined,
         remotes: ['origin'],
       },
       {
         id: stableId('file:///workspace/zeta'),
+        label: 'zeta',
         rootUri: zeta.rootUri,
         currentBranch: 'feature/zeta',
         remotes: ['origin', 'upstream'],

@@ -1,5 +1,6 @@
 import { IdenticalSelectionError, MissingRefError, NoCommonAncestorError } from '../compare/comparisonService';
 import { BinaryBlobError, BlobTooLargeError } from '../content/gitContentProvider';
+import { GitCommandError } from '../git/commandRunner';
 
 export class UserFacingError extends Error {
   public constructor(message: string, public readonly technicalError?: unknown) {
@@ -26,6 +27,12 @@ export function toUserFacingError(error: unknown): UserFacingError {
   }
   if (error instanceof BlobTooLargeError) {
     return new UserFacingError('This file exceeds the 10 MiB text preview limit', error);
+  }
+  if (error instanceof GitCommandError && /(?:could not fetch|promisor|missing object|bad object)/i.test(error.stderr)) {
+    return new UserFacingError(
+      'Required Git objects are unavailable locally; run Fetch and try again',
+      error,
+    );
   }
   return new UserFacingError('Unable to compare branches', error);
 }

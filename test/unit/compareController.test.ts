@@ -21,6 +21,7 @@ import type {
 } from '../../src/domain/model';
 import type { GitAdapter } from '../../src/git/gitAdapter';
 import type { RepositorySnapshot } from '../../src/repositories/repositoryProvider';
+import { GitCommandError } from '../../src/git/commandRunner';
 import { buildTreeModel, type TreeModelInput } from '../../src/tree/treeModel';
 import { MissingRefError, NoCommonAncestorError } from '../../src/compare/comparisonService';
 import { technicalErrorText, toUserFacingError } from '../../src/errors/userFacingError';
@@ -41,6 +42,7 @@ const remoteDevelop: GitRef = {
 function repository(id = 'repo-1', currentBranch = 'feature/x', remotes = ['origin']): RepositorySnapshot {
   return {
     id,
+    label: id,
     rootUri: {
       fsPath: `/workspace/${id}`,
       toString: () => `file:///workspace/${id}`,
@@ -131,6 +133,24 @@ function harness(options?: {
 }
 
 describe('CompareController', () => {
+  test('publishes repository-aware initial state before a multi-repository picker is cancelled', async () => {
+    const h = harness({ repositories: [repository('repo-1'), repository('repo-2')] });
+    const controller = new CompareController(h.deps);
+
+    await controller.initialize();
+
+    expect(h.repositoryPicks).toHaveLength(1);
+    expect(h.treeInputs[0]).toMatchObject({
+      repositories: h.repositories,
+      repository: undefined,
+      loading: false,
+    });
+    expect(buildTreeModel(h.treeInputs[0] as TreeModelInput)).toMatchObject({
+      repositoryLabel: '',
+      showRepositorySelector: true,
+    });
+  });
+
   test('selects the only repository without a picker and initializes compare from the current branch', async () => {
     const h = harness({ remoteHead: remoteMain.fullName });
     const controller = new CompareController(h.deps);
@@ -244,6 +264,26 @@ describe('CompareController', () => {
     await controller.toggleUnchanged();
     expect(h.loadCompleteTree).toHaveBeenCalledTimes(1);
     expect(h.lastInput()).toMatchObject({ showUnchanged: true, completeTree });
+  });
+
+  test('keeps a zero-change comparison valid so unchanged files can still be shown', async () => {
+    const h = harness({ remoteHead: remoteMain.fullName });
+    h.compare.mockImplementation(async (_root, selection) => ({
+      ...comparison(selection),
+      files: [],
+      summary: { files: 0, additions: 0, deletions: 0 },
+    }));
+    const controller = new CompareController(h.deps);
+
+    await controller.initialize();
+
+    expect(h.lastInput()).toMatchObject({
+      result: expect.objectContaining({ files: [], summary: { files: 0, additions: 0, deletions: 0 } }),
+      error: undefined,
+    });
+    await controller.toggleUnchanged();
+    expect(h.lastInput()).toMatchObject({ showUnchanged: true, completeTree });
+    expect(buildTreeModel(h.lastInput() as unknown as TreeModelInput).nodes).not.toHaveLength(0);
   });
 
   test('cancels and ignores complete-tree loading superseded by a branch selection', async () => {
@@ -631,6 +671,26 @@ describe('CompareController', () => {
     await selecting;
   });
 
+  test('invalidates post-save continuations and renders nothing after disposal', async () => {
+    const persistence = deferred<void>();
+    const h = harness({ remoteHead: remoteMain.fullName });
+    const controller = new CompareController(h.deps);
+    await controller.initialize();
+    const comparisonsBefore = h.compare.mock.calls.length;
+    const rendersBefore = h.treeInputs.length;
+    h.save.mockImplementationOnce(async () => persistence.promise);
+    h.setNextRef(remoteDevelop);
+
+    const selecting = controller.selectBase();
+    await vi.waitFor(() => expect(h.save).toHaveBeenCalledTimes(2));
+    controller.dispose();
+    persistence.resolve(undefined);
+    await selecting;
+
+    expect(h.compare).toHaveBeenCalledTimes(comparisonsBefore);
+    expect(h.treeInputs).toHaveLength(rendersBefore);
+  });
+
   test('clears a closed selected repository without reopening the multi-repository picker', async () => {
     const first = repository('repo-1');
     const second = repository('repo-2');
@@ -688,6 +748,13 @@ describe('toUserFacingError', () => {
       .toBe('The branches do not share a common ancestor');
     expect(toUserFacingError(new Error('secret\u0000details')).message)
       .toBe('Unable to compare branches');
+  });
+
+  test('turns a no-lazy-fetch missing-object failure into a recoverable Fetch instruction', () => {
+    expect(toUserFacingError(new GitCommandError(
+      128,
+      'fatal: could not fetch 0123456789abcdef from promisor remote',
+    )).message).toBe('Required Git objects are unavailable locally; run Fetch and try again');
   });
 
   test('redacts credential-key variants from technical output', () => {

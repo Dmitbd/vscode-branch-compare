@@ -43,6 +43,7 @@ const selection: ComparisonSelection = {
 
 const repository = {
   id: 'repo-1',
+  label: 'project',
   rootUri: { toString: () => selection.repositoryUri },
   currentBranch: 'feature',
   remotes: ['origin'],
@@ -151,7 +152,7 @@ describe('CompareViewProvider', () => {
     expect(JSON.stringify(h.webview.postMessage.mock.calls)).not.toContain('raw ls-tree output');
   });
 
-  test('emits only exact validated selection and filter actions', () => {
+  test('emits only exact validated selection, filter, and local refresh actions', () => {
     const provider = new CompareViewProvider();
     const h = webviewHarness();
     const actions: unknown[] = [];
@@ -162,6 +163,7 @@ describe('CompareViewProvider', () => {
     h.send({ type: 'select-base' });
     h.send({ type: 'select-compare' });
     h.send({ type: 'toggle-unchanged' });
+    h.send({ type: 'refresh' });
     h.send(null);
     h.send({ type: 'select-base', unexpected: true });
     h.send({ type: 42 });
@@ -172,6 +174,7 @@ describe('CompareViewProvider', () => {
       { type: 'selectBase' },
       { type: 'selectCompare' },
       { type: 'toggleUnchanged' },
+      { type: 'refresh' },
     ]);
   });
 

@@ -17,6 +17,7 @@ import {
 
 const repository = {
   id: 'repo-1',
+  label: 'project',
   rootUri: { toString: () => 'file:///workspace/project' },
   currentBranch: 'feature/x',
   remotes: ['origin'],
@@ -86,6 +87,30 @@ describe('formatMetric', () => {
 });
 
 describe('buildTreeModel', () => {
+  test('publishes the selected repository label and only shows a selector for multiple repositories', () => {
+    const secondRepository = {
+      ...repository,
+      id: 'repo-2',
+      label: 'other-project',
+    } as RepositorySnapshot;
+
+    expect(buildTreeModel({ repositories: [], refs: [] })).toMatchObject({
+      repositoryLabel: '',
+      showRepositorySelector: false,
+    });
+    expect(buildTreeModel(modelInput([]))).toMatchObject({
+      repositoryLabel: 'project',
+      showRepositorySelector: false,
+    });
+    expect(buildTreeModel({
+      ...modelInput([]),
+      repositories: [repository, secondRepository],
+    })).toMatchObject({
+      repositoryLabel: 'project',
+      showRepositorySelector: true,
+    });
+  });
+
   test('builds branch, summary, folder aggregate, and file presentation data', () => {
     const model = buildTreeModel(modelInput([
       changed('added', undefined, 'src/new.ts', 10, 0),

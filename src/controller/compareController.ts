@@ -85,10 +85,14 @@ export class CompareController {
   private completeTreeError: UserFacingError | undefined;
   private generation = 0;
   private activeSource: ControllerCancellationTokenSource | undefined;
+  private disposed = false;
 
   public constructor(private readonly dependencies: ControllerDependencies) {}
 
   public async initialize(): Promise<void> {
+    if (this.disposed) {
+      return;
+    }
     const repositories = this.dependencies.repositories.repositories;
     if (repositories.length === 0) {
       this.error = new UserFacingError('No repositories found');
@@ -99,10 +103,14 @@ export class CompareController {
       await this.activateRepository(repositories[0]);
       return;
     }
+    this.render();
     await this.selectRepository();
   }
 
   public async selectRepository(): Promise<void> {
+    if (this.disposed) {
+      return;
+    }
     const repositories = this.dependencies.repositories.repositories;
     if (repositories.length === 0) {
       this.error = new UserFacingError('No repositories found');
@@ -112,12 +120,15 @@ export class CompareController {
     const repository = repositories.length === 1
       ? repositories[0]
       : await this.dependencies.ui.pickRepository(repositories.map(repositoryPickItem));
-    if (repository) {
+    if (!this.disposed && repository) {
       await this.activateRepository(repository);
     }
   }
 
   public async repositoriesChanged(): Promise<void> {
+    if (this.disposed) {
+      return;
+    }
     const repositories = this.dependencies.repositories.repositories;
     const current = this.repository
       ? repositories.find((repository) => repository.id === this.repository?.id)
@@ -146,14 +157,23 @@ export class CompareController {
   }
 
   public async selectBase(): Promise<void> {
+    if (this.disposed) {
+      return;
+    }
     await this.selectRef('BASE');
   }
 
   public async selectCompare(): Promise<void> {
+    if (this.disposed) {
+      return;
+    }
     await this.selectRef('COMPARE');
   }
 
   public async refresh(): Promise<void> {
+    if (this.disposed) {
+      return;
+    }
     if (!this.repository || !this.selection) {
       this.renderSelectionError();
       return;
@@ -162,7 +182,7 @@ export class CompareController {
   }
 
   public async toggleUnchanged(): Promise<void> {
-    if (this.loading) {
+    if (this.disposed || this.loading) {
       return;
     }
     const repository = this.repository;
@@ -238,6 +258,9 @@ export class CompareController {
   }
 
   public async fetch(): Promise<void> {
+    if (this.disposed) {
+      return;
+    }
     if (!this.repository || !this.selection) {
       this.renderSelectionError();
       return;
@@ -302,6 +325,9 @@ export class CompareController {
   }
 
   public async swap(): Promise<void> {
+    if (this.disposed) {
+      return;
+    }
     if (!this.repository || !this.selection) {
       this.renderSelectionError();
       return;
@@ -326,6 +352,8 @@ export class CompareController {
 
   public async openDiff(target: DiffTarget, comparisonGeneration: number): Promise<void> {
     if (
+      this.disposed
+      ||
       comparisonGeneration !== this.generation
       || !this.repository
       || !this.result
@@ -342,6 +370,9 @@ export class CompareController {
         displayRef(this.selection?.compareRef, this.refs),
       );
     } catch (error) {
+      if (this.disposed) {
+        return;
+      }
       const userError = toUserFacingError(error);
       this.logError(error);
       const action = await this.dependencies.ui.showError(userError.message, 'Show Output');
@@ -356,6 +387,9 @@ export class CompareController {
     baseRef: string,
     compareRef: string,
   ): Promise<ComparisonResult> {
+    if (this.disposed) {
+      throw new UserFacingError('Branch Compare has been disposed');
+    }
     const repository = this.dependencies.repositories.repositories
       .find((candidate) => candidate.id === repositoryId);
     if (!repository) {
@@ -372,12 +406,17 @@ export class CompareController {
   }
 
   public dispose(): void {
-    this.activeSource?.cancel();
-    this.activeSource?.dispose();
-    this.activeSource = undefined;
+    if (this.disposed) {
+      return;
+    }
+    this.disposed = true;
+    this.invalidateOperation();
   }
 
   private async activateRepository(repository: RepositorySnapshot): Promise<void> {
+    if (this.disposed) {
+      return;
+    }
     this.repository = repository;
     this.refs = [];
     this.baseRef = undefined;
@@ -391,7 +430,7 @@ export class CompareController {
 
   private async initializeSelection(): Promise<void> {
     const repository = this.repository;
-    if (!repository) {
+    if (this.disposed || !repository) {
       return;
     }
     const generation = this.startOperation();
@@ -465,12 +504,16 @@ export class CompareController {
   }
 
   private async selectRef(role: 'BASE' | 'COMPARE'): Promise<void> {
+    if (this.disposed) {
+      return;
+    }
     if (!this.repository) {
       await this.selectRepository();
       return;
     }
+    const repository = this.repository;
     const picked = await this.dependencies.ui.pickRef(this.refs.map(refPickItem), role);
-    if (!picked) {
+    if (this.disposed || repository.id !== this.repository?.id || !picked) {
       return;
     }
     this.baseRef = role === 'BASE' ? picked.fullName : this.baseRef;
@@ -482,7 +525,6 @@ export class CompareController {
       this.render();
       return;
     }
-    const repository = this.repository;
     const selection = createSelection(repository, this.baseRef, this.compareRef);
     this.selection = selection;
     await this.dependencies.selectionStore.save(repository.id, selection);
@@ -568,9 +610,7 @@ export class CompareController {
     const shouldResumeCompleteTree = this.shouldResumeCompleteTree(completeTreeRequestFor, result);
     this.result = result;
     this.loading = false;
-    this.error = result.files.length === 0
-      ? new UserFacingError('No changes between the merge base and compare branch')
-      : undefined;
+    this.error = undefined;
     if (shouldResumeCompleteTree) {
       await this.loadCompleteTreeWithinOperation(
         generation,
@@ -607,6 +647,9 @@ export class CompareController {
   }
 
   private render(): void {
+    if (this.disposed) {
+      return;
+    }
     this.dependencies.tree.setInput({
       repositories: this.dependencies.repositories.repositories,
       repository: this.repository,
@@ -643,7 +686,8 @@ export class CompareController {
     selection: ComparisonSelection | undefined,
     repository: RepositorySnapshot,
   ): boolean {
-    return generation === this.generation
+    return !this.disposed
+      && generation === this.generation
       && repository.id === this.repository?.id
       && (selection === undefined || sameSelection(selection, this.selection));
   }
@@ -700,7 +744,7 @@ export class CompareController {
 function repositoryPickItem(repository: RepositorySnapshot): RepositoryPickItem {
   const path = repository.rootUri.fsPath;
   return {
-    label: path.split(/[\\/]/).filter(Boolean).at(-1) ?? path,
+    label: repository.label,
     description: path,
     repository,
   };

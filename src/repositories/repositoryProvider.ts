@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import path from 'node:path';
 import * as vscode from 'vscode';
 
 export interface BuiltInRepository {
@@ -27,6 +28,7 @@ export interface GitExtensionLookup {
 
 export interface RepositorySnapshot {
   readonly id: string;
+  readonly label: string;
   readonly rootUri: vscode.Uri;
   readonly currentBranch: string | undefined;
   readonly remotes: readonly string[];
@@ -93,6 +95,7 @@ function createSnapshot(repository: BuiltInRepository): RepositorySnapshot {
   );
   return Object.freeze({
     id: createRepositoryId(rootUri),
+    label: path.basename(repository.rootUri.fsPath) || repository.rootUri.fsPath,
     rootUri: repository.rootUri,
     currentBranch: repository.state.HEAD?.name,
     remotes,
