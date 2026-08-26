@@ -48,7 +48,8 @@ function escapeDisplay(value: string): string {
     if (character === '\t') return '\\t';
     if (character === '\n') return '\\n';
     if (character === '\r') return '\\r';
-    if (code <= 0x1f || (code >= 0x7f && code <= 0x9f)) return `\\x${code.toString(16).padStart(2, '0').toUpperCase()}`;
+    if (code >= 0x80 && code <= 0x9f) return `\\u{${code.toString(16).toUpperCase()}}`;
+    if (code <= 0x1f || code === 0x7f) return `\\x${code.toString(16).padStart(2, '0').toUpperCase()}`;
     if (/\p{Cf}/u.test(character)) return `\\u{${code.toString(16).toUpperCase()}}`;
     return character;
   }).join('');
