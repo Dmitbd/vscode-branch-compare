@@ -52,6 +52,7 @@ const commit = 'a'.repeat(40);
 describe('virtual Git document URI', () => {
   test.each([
     'src/file with spaces.ts',
+    'src/file with spaces and 100%.ts',
     'папка/файл-🚀.ts',
     'docs/topic#section?.md',
   ])('round-trips a safe reference for path %s', (path) => {

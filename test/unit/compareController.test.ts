@@ -269,7 +269,7 @@ describe('CompareController', () => {
     h.setNextRef(remoteDevelop);
     await controller.selectBase();
 
-    await controller.openDiff(staleInput.result.files[0], staleInput.comparisonGeneration);
+    await controller.openDiff({ kind: 'changed', file: staleInput.result.files[0] }, staleInput.comparisonGeneration);
 
     expect(openDiff).not.toHaveBeenCalled();
   });
@@ -286,7 +286,7 @@ describe('CompareController', () => {
 
     const selecting = controller.selectBase();
     await vi.waitFor(() => expect(h.save).toHaveBeenCalledTimes(2));
-    await controller.openDiff(staleInput.result.files[0], staleInput.comparisonGeneration);
+    await controller.openDiff({ kind: 'changed', file: staleInput.result.files[0] }, staleInput.comparisonGeneration);
 
     expect(openDiff).not.toHaveBeenCalled();
     persistence.resolve(undefined);
@@ -314,8 +314,27 @@ describe('CompareController', () => {
       selection: undefined,
       result: undefined,
     });
-    await controller.openDiff(staleInput.result.files[0], staleInput.comparisonGeneration);
+    await controller.openDiff({ kind: 'changed', file: staleInput.result.files[0] }, staleInput.comparisonGeneration);
     expect(openDiff).not.toHaveBeenCalled();
+  });
+
+  test('opens an unchanged target from the current comparison generation', async () => {
+    const openDiff = vi.fn(async () => undefined);
+    const h = harness({ remoteHead: remoteMain.fullName, openDiff });
+    const controller = new CompareController(h.deps);
+    await controller.initialize();
+    const currentInput = h.treeInputs.at(-1) as { result: ComparisonResult; comparisonGeneration: number };
+    const target = { kind: 'unchanged' as const, path: 'src/context.ts' };
+
+    await controller.openDiff(target, currentInput.comparisonGeneration);
+
+    expect(openDiff).toHaveBeenCalledWith(
+      'repo-1',
+      currentInput.result,
+      target,
+      'origin/main',
+      'feature/x',
+    );
   });
 });
 

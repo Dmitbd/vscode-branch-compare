@@ -12,7 +12,7 @@ import {
   type ControllerCancellationTokenSource,
   type ControllerDependencies,
 } from '../../src/controller/compareController';
-import type { ChangedFile, ComparisonSelection } from '../../src/domain/model';
+import type { ComparisonSelection, DiffTarget } from '../../src/domain/model';
 import { DefaultGitAdapter } from '../../src/git/gitAdapter';
 import type { RepositorySnapshot } from '../../src/repositories/repositoryProvider';
 import type { TreeModelInput } from '../../src/tree/treeModel';
@@ -29,13 +29,18 @@ describe('read-only workflow invariants', () => {
     const repo = await createFeatureRepository();
     const adapter = new DefaultGitAdapter();
     const snapshot = await repositorySnapshot(repo, []);
-    let selectedDiff: ChangedFile | undefined;
+    let selectedDiff: DiffTarget | undefined;
     let comparisonGeneration = 0;
-    const controller = controllerFor(snapshot, adapter, async (_id, result, file) => {
-      selectedDiff = file;
-      const path = file.newPath ?? file.oldPath;
-      if (path && file.status !== 'deleted') {
-        await adapter.readBlob(repo.root, result.compareSha, path);
+    const controller = controllerFor(snapshot, adapter, async (_id, result, target) => {
+      selectedDiff = target;
+      if (target.kind === 'unchanged') {
+        await adapter.readBlob(repo.root, result.mergeBaseSha, target.path);
+        await adapter.readBlob(repo.root, result.compareSha, target.path);
+      } else {
+        const path = target.file.newPath ?? target.file.oldPath;
+        if (path && target.file.status !== 'deleted') {
+          await adapter.readBlob(repo.root, result.compareSha, path);
+        }
       }
     }, (input) => { comparisonGeneration = input.comparisonGeneration ?? 0; });
     const before = await invariantSnapshot(repo);
@@ -52,9 +57,9 @@ describe('read-only workflow invariants', () => {
     await adapter.listChangedFiles(repo.root, 'refs/heads/main', 'refs/heads/feature/x');
     expect(await invariantSnapshot(repo)).toEqual(before);
 
-    const changedFile: ChangedFile = { status: 'added', oldPath: undefined, newPath: 'feature.txt' };
-    await controller.openDiff(changedFile, comparisonGeneration);
-    expect(selectedDiff).toEqual(changedFile);
+    const unchangedTarget: DiffTarget = { kind: 'unchanged', path: 'base.txt' };
+    await controller.openDiff(unchangedTarget, comparisonGeneration);
+    expect(selectedDiff).toEqual(unchangedTarget);
     expect(await invariantSnapshot(repo)).toEqual(before);
   });
 
