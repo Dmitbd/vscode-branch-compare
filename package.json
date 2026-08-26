@@ -35,9 +35,9 @@
       { "command": "branchCompare.selectRepository", "title": "Branch Compare: Select Repository" },
       { "command": "branchCompare.selectBase", "title": "Branch Compare: Select Base Branch" },
       { "command": "branchCompare.selectCompare", "title": "Branch Compare: Select Compare Branch" },
-      { "command": "branchCompare.fetch", "title": "Branch Compare: Fetch", "icon": "$(cloud-download)" },
-      { "command": "branchCompare.refresh", "title": "Branch Compare: Refresh", "icon": "$(refresh)" },
-      { "command": "branchCompare.swap", "title": "Branch Compare: Swap Branches", "icon": "$(arrow-swap)" },
+      { "command": "branchCompare.fetch", "title": "fetch — обновить данные с сервера", "icon": "$(cloud-download)" },
+      { "command": "branchCompare.refresh", "title": "refresh — перечитать локальные данные", "icon": "$(refresh)" },
+      { "command": "branchCompare.swap", "title": "swap — поменять направление сравнения", "icon": "$(arrow-swap)" },
       { "command": "branchCompare.openDiff", "title": "Branch Compare: Open Full Diff" }
     ],
     "menus": {

@@ -18,4 +18,16 @@ describe('extension manifest', () => {
     ]);
     expect(commands.join(' ')).not.toMatch(/checkout|merge|rebase|commit|push|stage|apply/i);
   });
+
+  it('uses concise Russian explanations for toolbar actions', () => {
+    const commandTitles = Object.fromEntries(
+      manifest.contributes.commands.map((item: { command: string; title: string }) => [item.command, item.title]),
+    );
+
+    expect(commandTitles).toMatchObject({
+      'branchCompare.fetch': 'fetch — обновить данные с сервера',
+      'branchCompare.refresh': 'refresh — перечитать локальные данные',
+      'branchCompare.swap': 'swap — поменять направление сравнения',
+    });
+  });
 });
