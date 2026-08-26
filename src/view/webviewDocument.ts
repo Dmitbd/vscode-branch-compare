@@ -164,6 +164,25 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
 
     .message.error { color: var(--vscode-errorForeground); }
 
+    .complete-tree-error {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .complete-tree-error-message { min-width: 0; flex: 1; }
+
+    .retry-button {
+      padding: 2px 8px;
+      border: 1px solid var(--vscode-button-border, transparent);
+      border-radius: 2px;
+      color: var(--vscode-button-foreground);
+      background: var(--vscode-button-background);
+      cursor: pointer;
+    }
+
+    .retry-button:hover { background: var(--vscode-button-hoverBackground); }
+
     .tree {
       padding: 0 2px 8px;
       outline: none;
@@ -247,6 +266,10 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
     </div>
     <p class="message" id="message" role="status" hidden></p>
     <p class="message error" id="error" role="alert" hidden></p>
+    <div class="message error complete-tree-error" id="complete-tree-error" role="alert" hidden>
+      <span class="complete-tree-error-message" id="complete-tree-error-message"></span>
+      <button class="retry-button" id="retry-complete-tree" type="button">Refresh</button>
+    </div>
     <div class="tree" id="tree" role="tree" aria-label="Changed files"></div>
   </section>
 
@@ -262,6 +285,9 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
     const tree = document.getElementById('tree');
     const message = document.getElementById('message');
     const error = document.getElementById('error');
+    const completeTreeError = document.getElementById('complete-tree-error');
+    const completeTreeErrorMessage = document.getElementById('complete-tree-error-message');
+    const retryCompleteTree = document.getElementById('retry-complete-tree');
     const toggleUnchanged = document.getElementById('toggle-unchanged');
     const eyeOpen = toggleUnchanged.querySelector('.eye-open');
     const eyeClosed = toggleUnchanged.querySelector('.eye-closed');
@@ -272,6 +298,9 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
     branchBase.addEventListener('click', function () { vscode.postMessage({ type: 'select-base' }); });
     branchCompare.addEventListener('click', function () { vscode.postMessage({ type: 'select-compare' }); });
     toggleUnchanged.addEventListener('click', function () { vscode.postMessage({ type: 'toggle-unchanged' }); });
+    document.getElementById('retry-complete-tree').addEventListener('click', function () {
+      vscode.postMessage({ type: 'toggle-unchanged' });
+    });
     document.getElementById('collapse-all').addEventListener('click', function () {
       expandedPaths.clear();
       renderTree();
@@ -322,6 +351,9 @@ export function createWebviewDocument(options: WebviewDocumentOptions): string {
     function renderMessages() {
       error.hidden = !currentModel.error;
       error.textContent = currentModel.error || '';
+      completeTreeError.hidden = !currentModel.completeTreeError;
+      completeTreeErrorMessage.textContent = currentModel.completeTreeError || '';
+      retryCompleteTree.hidden = !currentModel.canRetryCompleteTree;
       const status = currentModel.loading
         ? 'Загрузка сравнения…'
         : currentModel.completeTreeLoading

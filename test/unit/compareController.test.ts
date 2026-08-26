@@ -21,6 +21,7 @@ import type {
 } from '../../src/domain/model';
 import type { GitAdapter } from '../../src/git/gitAdapter';
 import type { RepositorySnapshot } from '../../src/repositories/repositoryProvider';
+import { buildTreeModel, type TreeModelInput } from '../../src/tree/treeModel';
 import { MissingRefError, NoCommonAncestorError } from '../../src/compare/comparisonService';
 import { technicalErrorText, toUserFacingError } from '../../src/errors/userFacingError';
 
@@ -361,6 +362,14 @@ describe('CompareController', () => {
       }),
     });
     expect(h.deps.output.appendLine).toHaveBeenCalledWith(expect.stringContaining('ls-tree exploded'));
+    const viewModel = buildTreeModel(h.lastInput() as unknown as TreeModelInput);
+    expect(viewModel).toMatchObject({
+      completeTreeError: 'Unable to load all files; try again',
+      canRetryCompleteTree: true,
+      error: undefined,
+    });
+    expect(viewModel.nodes).not.toHaveLength(0);
+    expect(JSON.stringify(viewModel)).not.toContain('ls-tree exploded');
 
     await controller.toggleUnchanged();
     expect(h.loadCompleteTree).toHaveBeenCalledTimes(2);

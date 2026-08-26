@@ -193,6 +193,26 @@ describe('buildTreeModel', () => {
     expect(model.summary).toEqual({ files: 1, additions: 3, deletions: 4 });
   });
 
+  test('maps a complete-tree error without discarding changed rows or exposing technical details', () => {
+    const completeTreeError = Object.assign(
+      new Error('Unable to load all files; try again'),
+      { technicalError: new Error('raw ls-tree output') },
+    );
+    const model = buildTreeModel(modelInput([
+      changed('modified', 'src/edit.ts', 'src/edit.ts', 3, 4),
+    ], { completeTreeError }));
+
+    expect(model).toMatchObject({
+      completeTreeError: 'Unable to load all files; try again',
+      canRetryCompleteTree: true,
+      error: undefined,
+      canRetry: false,
+    });
+    expect(flatten(model.nodes)).toHaveLength(1);
+    expect(model.summary).toEqual({ files: 1, additions: 3, deletions: 4 });
+    expect(JSON.stringify(model)).not.toContain('raw ls-tree output');
+  });
+
   test('an error without a result exposes retry and no stale summary or nodes', () => {
     const model = buildTreeModel({
       repositories: [repository], repository, refs, selection,
@@ -200,7 +220,9 @@ describe('buildTreeModel', () => {
     });
 
     expect(model).toMatchObject({
-      error: 'Git failed', canRetry: true, loading: false, nodes: [],
+      error: 'Git failed', canRetry: true,
+      completeTreeError: undefined, canRetryCompleteTree: false,
+      loading: false, nodes: [],
     });
     expect(model.summary).toBeUndefined();
   });

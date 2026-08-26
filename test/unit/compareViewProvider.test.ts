@@ -126,6 +126,31 @@ describe('CompareViewProvider', () => {
     }));
   });
 
+  test('publishes a serializable retryable complete-tree error while retaining changed nodes', () => {
+    const provider = new CompareViewProvider();
+    const h = webviewHarness();
+    provider.setInput({
+      ...input(7),
+      completeTreeError: Object.assign(
+        new Error('Unable to load all files; try again'),
+        { technicalError: new Error('raw ls-tree output') },
+      ),
+    });
+    provider.resolveWebviewView(h.view);
+
+    h.send({ type: 'ready' });
+
+    expect(h.webview.postMessage).toHaveBeenCalledWith({
+      type: 'render',
+      model: expect.objectContaining({
+        completeTreeError: 'Unable to load all files; try again',
+        canRetryCompleteTree: true,
+        nodes: expect.arrayContaining([expect.any(Object)]),
+      }),
+    });
+    expect(JSON.stringify(h.webview.postMessage.mock.calls)).not.toContain('raw ls-tree output');
+  });
+
   test('emits only exact validated selection and filter actions', () => {
     const provider = new CompareViewProvider();
     const h = webviewHarness();

@@ -51,6 +51,8 @@ export interface CompareViewModel {
   readonly loading: boolean;
   readonly error?: string;
   readonly canRetry: boolean;
+  readonly completeTreeError?: string;
+  readonly canRetryCompleteTree: boolean;
 }
 
 export interface TreeModelInput {
@@ -65,6 +67,7 @@ export interface TreeModelInput {
   readonly comparisonGeneration?: number;
   readonly showUnchanged?: boolean;
   readonly completeTreeLoading?: boolean;
+  readonly completeTreeError?: Error;
   readonly loading?: boolean;
   readonly error?: Error;
 }
@@ -89,6 +92,9 @@ export function formatMetric(value: number): string {
 export function buildTreeModel(input: TreeModelInput): CompareViewModel {
   const selection = input.selection;
   const error = input.error ? errorMessage(input.error) : undefined;
+  const completeTreeError = error || !input.completeTreeError
+    ? undefined
+    : errorMessage(input.completeTreeError);
   const result = error ? undefined : input.result;
   const showUnchanged = input.showUnchanged ?? false;
   const generation = input.comparisonGeneration ?? 0;
@@ -110,6 +116,8 @@ export function buildTreeModel(input: TreeModelInput): CompareViewModel {
     loading: input.loading ?? false,
     error,
     canRetry: error !== undefined,
+    completeTreeError,
+    canRetryCompleteTree: completeTreeError !== undefined,
   };
 
   return Object.freeze(model);

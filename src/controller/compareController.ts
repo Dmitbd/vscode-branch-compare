@@ -56,7 +56,7 @@ export interface ControllerDependencies {
     } | undefined>;
     save(repositoryId: string, selection: ComparisonSelection): Promise<void>;
   };
-  readonly tree: { setInput(input: ControllerTreeInput): void };
+  readonly tree: { setInput(input: TreeModelInput): void };
   readonly ui: CompareControllerUi;
   readonly output: { appendLine(value: string): void; show(preserveFocus?: boolean): void };
   readonly createCancellationTokenSource: () => ControllerCancellationTokenSource;
@@ -67,10 +67,6 @@ export interface ControllerDependencies {
     baseLabel: string,
     compareLabel: string,
   ) => Promise<void>;
-}
-
-export interface ControllerTreeInput extends TreeModelInput {
-  readonly completeTreeError?: UserFacingError;
 }
 
 export class CompareController {

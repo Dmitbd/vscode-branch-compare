@@ -17,6 +17,9 @@ describe('createWebviewDocument', () => {
     expect(html).toContain('показать файлы без изменений');
     expect(html).toContain('скрыть файлы без изменений');
     expect(html).toContain('свернуть все папки');
+    expect(html).toContain('id="complete-tree-error"');
+    expect(html).toContain('id="retry-complete-tree"');
+    expect(html).toContain('>Refresh<');
     expect(html).not.toContain('merges into');
     expect(html).not.toMatch(/#[0-9a-f]{3,8}/i);
   });
@@ -113,5 +116,18 @@ describe('createWebviewDocument', () => {
     expect(toggleFunction).toContain('expandedPaths.delete(path)');
     expect(toggleFunction).toContain('expandedPaths.add(path)');
     expect(toggleFunction).toContain('renderTree(path)');
+  });
+
+  test('renders a tree-only error inline and retries only the complete-tree intent', () => {
+    const html = createWebviewDocument({ cspSource: 'test:', nonce: 'nonce' });
+    const retryHandler = html.match(
+      /getElementById\('retry-complete-tree'\)\.addEventListener\('click', function \(\) \{([\s\S]*?)\n    \}\);/,
+    )?.[1];
+
+    expect(html).toContain("completeTreeErrorMessage.textContent = currentModel.completeTreeError || ''");
+    expect(html).toContain('completeTreeError.hidden = !currentModel.completeTreeError');
+    expect(html).toContain('retryCompleteTree.hidden = !currentModel.canRetryCompleteTree');
+    expect(retryHandler).toContain("vscode.postMessage({ type: 'toggle-unchanged' })");
+    expect(retryHandler).not.toMatch(/fetch|checkout|switch/);
   });
 });
