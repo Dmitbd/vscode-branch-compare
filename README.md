@@ -50,7 +50,7 @@ The initial COMPARE is the current local branch. BASE prefers the selected remot
 
 ### Comparison view
 
-The **BRANCHES** section shows `BASE` above `COMPARE`; the upward arrow indicates that `COMPARE` is being viewed toward `BASE`. The summary below the selectors shows the number of changed files and the total `+added` and `−deleted` lines.
+The **BRANCHES** section shows `BASE` above `COMPARE`; the upward arrow indicates that the comparison is viewed from `COMPARE` toward `BASE`. The summary below the selectors shows the number of changed files and the total `+added` and `−deleted` lines.
 
 The **CHANGED FILES** section uses the active editor theme. Added items are green, modified items use the theme's modified color, and deleted items are red. Every changed folder shows recursive added, modified, and deleted file counts. Every changed file shows a pencil and its own added and deleted line counts. Zero values are omitted, and binary files use `—` because text line counts are unavailable. Folder metrics are offset from file metrics so the two levels remain visually distinct in large trees.
 
