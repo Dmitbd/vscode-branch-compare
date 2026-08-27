@@ -1,10 +1,21 @@
 # Branch Compare Viewer
 
-Compare any two local or remote-tracking Git branches inside VS Code and inspect every changed text file in the full built-in side-by-side diff.
+Compare any two local or remote-tracking Git branches inside VS Code or Cursor and inspect every changed text file in the full native side-by-side diff.
 
 ## Why
 
 Git hosting sites often show isolated diff hunks. Branch Compare Viewer keeps the complete file visible on both sides while preserving merge-request semantics.
+
+## Features
+
+- Select independent `BASE` and `COMPARE` branches without switching the working branch.
+- Browse a complete project tree containing changed files only, or temporarily include unchanged files.
+- See recursive added, modified, and deleted file counts for folders.
+- See added and deleted line counts for individual files, with zero values omitted.
+- Hide tree metrics or collapse every expanded folder from the **CHANGED FILES** header.
+- Open complete, syntax-highlighted files in the editor's native read-only diff.
+- Use the active VS Code or Cursor theme, colors, fonts, and language highlighting.
+- Refresh local refs, explicitly Fetch remote-tracking refs, or Swap the comparison direction.
 
 ## Read-only by design
 
@@ -12,18 +23,19 @@ The extension never edits files, stages changes, switches branches, merges, reba
 
 ## Installation
 
-Version 0.1.3 is distributed as a VSIX from this repository; Marketplace publication is not part of this release.
-Requires VS Code 1.96 or newer and Git 2.45 or newer.
+Version 0.1.3 is distributed as a VSIX through GitHub Releases; Marketplace publication is not part of this release. It requires VS Code 1.96 or newer (or a compatible Cursor version) and Git 2.45 or newer.
 
-1. Build or download `branch-compare-viewer-0.1.3.vsix`.
-2. In VS Code, open **Extensions**.
+1. Download [`branch-compare-viewer-0.1.3.vsix`](https://github.com/Dmitbd/vscode-branch-compare/releases/download/v0.1.3/branch-compare-viewer-0.1.3.vsix).
+2. In VS Code or Cursor, open **Extensions**.
 3. Choose **Views and More Actions… → Install from VSIX…**.
 4. Select the VSIX and open the **Branch Compare** activity-bar view.
 
-You can also install it from a terminal:
+You can also install the downloaded file from a terminal:
 
 ```bash
 code --install-extension branch-compare-viewer-0.1.3.vsix
+# or
+cursor --install-extension branch-compare-viewer-0.1.3.vsix
 ```
 
 ## Usage
@@ -31,18 +43,31 @@ code --install-extension branch-compare-viewer-0.1.3.vsix
 1. Select a repository when the workspace contains more than one.
 2. Select BASE and COMPARE from local and remote-tracking branches.
 3. Optionally run **Fetch** to update the relevant remote-tracking refs.
-4. Browse added, modified, deleted, and renamed files.
-5. Open a full read-only VS Code diff.
+4. Browse the changed-file tree and inspect its folder or file metrics.
+5. Open a changed text file in the full native read-only diff.
 
 The initial COMPARE is the current local branch. BASE prefers the selected remote's HEAD and then `main`, `master`, or `develop`. You can replace either selection at any time or swap them.
 
 ### Comparison view
 
-The branch picker shows `BASE` above `COMPARE`; the upward arrow means the comparison is viewed from `COMPARE` toward `BASE`. The summary below the branches shows the number of changed files and the total `+added` and `-deleted` lines. Changed file and folder names inherit the Git status color. Every changed folder shows recursive added, modified, and deleted file counts, while each changed file shows a pencil and its own `+added/-deleted` line counts. Zero values are omitted, and binary files use `—` because text line counts are unavailable.
+The **BRANCHES** section shows `BASE` above `COMPARE`; the upward arrow indicates that `COMPARE` is being viewed toward `BASE`. The summary below the selectors shows the number of changed files and the total `+added` and `−deleted` lines.
+
+The **CHANGED FILES** section uses the active editor theme. Added items are green, modified items use the theme's modified color, and deleted items are red. Every changed folder shows recursive added, modified, and deleted file counts. Every changed file shows a pencil and its own added and deleted line counts. Zero values are omitted, and binary files use `—` because text line counts are unavailable. Folder metrics are offset from file metrics so the two levels remain visually distinct in large trees.
 
 By default, the tree contains changed files only. Use the eye button to show or hide neutral unchanged files; its Russian tooltip changes between `показать файлы без изменений` and `скрыть файлы без изменений`. The adjacent `±` button hides or restores only the right-side tree metrics, and the overlapping-panels button (`свернуть все папки`) collapses the entire tree.
 
 Opening a text file uses VS Code's native, read-only side-by-side diff. The editor follows the active theme and provides syntax highlighting for recognized file types on both sides, including unchanged files shown by the eye toggle.
+
+### Header actions
+
+| Action | What it does |
+| --- | --- |
+| **fetch — обновить данные с сервера** | Explicitly updates the selected remote-tracking refs and recomputes the comparison. |
+| **refresh — обновить локальные данные** | Rereads local refs and recomputes the comparison without contacting a remote. |
+| **swap — поменять направление сравнения** | Exchanges `BASE` and `COMPARE`. |
+| Eye button | Shows or hides unchanged project files. |
+| `±` button | Hides or restores only the right-side metrics. |
+| Collapse-all button | Collapses every expanded folder. |
 
 ## Comparison semantics
 
