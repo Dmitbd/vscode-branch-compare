@@ -15,6 +15,14 @@ export interface StatusCounts {
   readonly deleted: number;
 }
 
+export type PresentationStatus = 'added' | 'modified' | 'deleted';
+
+export interface MetricColumnWidths {
+  readonly added: number;
+  readonly modified: number;
+  readonly deleted: number;
+}
+
 export interface FormattedStatusCounts {
   readonly added: string;
   readonly modified: string;
@@ -32,6 +40,7 @@ export interface ViewFolderNode {
   readonly kind: 'folder';
   readonly label: string;
   readonly path: string;
+  readonly status?: PresentationStatus;
   readonly counts: StatusCounts;
   readonly formattedCounts: FormattedStatusCounts;
   readonly children: readonly ViewTreeNode[];
@@ -42,7 +51,7 @@ export interface ViewFileNode {
   readonly kind: 'file';
   readonly label: string;
   readonly path: string;
-  readonly status?: 'added' | 'modified' | 'deleted';
+  readonly status?: PresentationStatus;
   readonly additions?: string;
   readonly deletions?: string;
   readonly binary: boolean;
@@ -64,6 +73,7 @@ export interface CompareViewModel {
   readonly summary?: ChangeSummary;
   readonly summaryMetrics?: FormattedSummary;
   readonly nodes: readonly ViewTreeNode[];
+  readonly metricColumnWidths: MetricColumnWidths;
   readonly initialExpandedPaths: readonly string[];
   readonly showUnchanged: boolean;
   readonly completeTreeLoading: boolean;
@@ -125,6 +135,7 @@ export function buildTreeModel(input: TreeModelInput): CompareViewModel {
     addUnchangedNodes(fileNodes, changedPaths(result.files), input.completeTree, generation);
   }
   const nodes = createTree(fileNodes.values());
+  const metricColumnWidths = measureMetricColumnWidths(nodes);
 
   const model: CompareViewModel = {
     repositoryLabel: input.repository?.label ?? '',
@@ -136,6 +147,7 @@ export function buildTreeModel(input: TreeModelInput): CompareViewModel {
     summary: result ? Object.freeze({ ...result.summary }) : undefined,
     summaryMetrics: result ? formatSummary(result.summary) : undefined,
     nodes,
+    metricColumnWidths,
     initialExpandedPaths: initialExpandedPaths(nodes),
     showUnchanged,
     completeTreeLoading: input.completeTreeLoading ?? false,
@@ -269,6 +281,7 @@ function sortFolder(folder: MutableFolder): { readonly nodes: readonly ViewTreeN
         kind: 'folder' as const,
         label: child.label,
         path: child.path,
+        status: folderStatus(childTree.counts),
         counts: childTree.counts,
         formattedCounts: formatCounts(childTree.counts),
         children: freezeNodes(childTree.nodes),
@@ -317,6 +330,57 @@ function formatCounts(counts: StatusCounts): FormattedStatusCounts {
     modified: formatMetric(counts.modified),
     deleted: formatMetric(counts.deleted),
   });
+}
+
+function folderStatus(counts: StatusCounts): PresentationStatus | undefined {
+  const kinds = Number(counts.added > 0) + Number(counts.modified > 0) + Number(counts.deleted > 0);
+  if (kinds === 0) {
+    return undefined;
+  }
+  if (kinds > 1 || counts.modified > 0) {
+    return 'modified';
+  }
+  return counts.added > 0 ? 'added' : 'deleted';
+}
+
+function measureMetricColumnWidths(nodes: readonly ViewTreeNode[]): MetricColumnWidths {
+  const widths = mutableMetricColumnWidths();
+
+  const visit = (node: ViewTreeNode): void => {
+    if (node.kind === 'folder') {
+      widths.added = Math.max(widths.added, metricWidth(folderMetric(node.formattedCounts.added, '+', node.counts.added > 0)));
+      widths.modified = Math.max(widths.modified, metricWidth(folderMetric(node.formattedCounts.modified, '', node.counts.modified > 0)));
+      widths.deleted = Math.max(widths.deleted, metricWidth(folderMetric(node.formattedCounts.deleted, '−', node.counts.deleted > 0)));
+      node.children.forEach(visit);
+      return;
+    }
+
+    if (node.binary) {
+      widths.deleted = Math.max(widths.deleted, metricWidth('—'));
+      return;
+    }
+    widths.added = Math.max(widths.added, metricWidth(fileMetric(node.additions, '+')));
+    widths.deleted = Math.max(widths.deleted, metricWidth(fileMetric(node.deletions, '−')));
+  };
+
+  nodes.forEach(visit);
+  return Object.freeze(widths);
+}
+
+function mutableMetricColumnWidths(): { added: number; modified: number; deleted: number } {
+  return { added: 0, modified: 0, deleted: 0 };
+}
+
+function folderMetric(value: string, prefix: string, present: boolean): string {
+  return present ? `${prefix}${value}` : '';
+}
+
+function fileMetric(value: string | undefined, prefix: string): string {
+  return value && value !== '0' ? `${prefix}${value}` : '';
+}
+
+function metricWidth(value: string): number {
+  return value.length;
 }
 
 function initialExpandedPaths(nodes: readonly ViewTreeNode[]): readonly string[] {

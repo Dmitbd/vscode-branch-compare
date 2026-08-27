@@ -144,6 +144,7 @@ describe('buildTreeModel', () => {
     }]));
     const changedNode = flatten(changedModel.nodes).find((node): node is ViewFileNode => node.kind === 'file');
     expect(changedNode).toMatchObject({ previewable: false, binary: true, additions: '—', deletions: '—' });
+    expect(changedModel.metricColumnWidths).toEqual({ added: 0, modified: 1, deleted: 1 });
 
     const unchangedModel = buildTreeModel({
       ...modelInput([]), showUnchanged: true,
@@ -187,14 +188,57 @@ describe('buildTreeModel', () => {
     expect(model.branches).toEqual({ base: 'origin/develop', compare: 'feature/x' });
     expect(model.summary).toEqual({ files: 4, additions: 14, deletions: 13 });
     expect(model.summaryMetrics).toEqual({ files: '4', additions: '14', deletions: '13' });
+    expect(model.metricColumnWidths).toEqual({ added: 3, modified: 1, deleted: 2 });
     expect(model.nodes[0]).toMatchObject({
       kind: 'folder', label: 'src', path: `b64:${Buffer.from('src').toString('base64url')}`,
+      status: 'modified',
       counts: { added: 1, modified: 2, deleted: 1 },
       formattedCounts: { added: '1', modified: '2', deleted: '1' },
     });
     expect(flatten(model.nodes).find((node) => node.path === 'src/renamed.ts')).toMatchObject({
       status: 'modified', additions: '1', deletions: '1',
       target: { kind: 'changed', file: { status: 'renamed' } }, generation: 7,
+    });
+  });
+
+  test.each([
+    ['only added descendants', [changed('added', undefined, 'src/new.ts', 1, 0)], 'added'],
+    ['only deleted descendants', [changed('deleted', 'src/old.ts', undefined, 0, 1)], 'deleted'],
+    ['only modified descendants', [changed('modified', 'src/edit.ts', 'src/edit.ts', 1, 1)], 'modified'],
+    ['mixed changed descendants', [
+      changed('added', undefined, 'src/new.ts', 1, 0),
+      changed('deleted', 'src/old.ts', undefined, 0, 1),
+    ], 'modified'],
+    ['only unchanged descendants', [], undefined],
+  ] as const)('derives folder status from %s', (_name, files, expectedStatus) => {
+    const model = buildTreeModel(modelInput(files, expectedStatus === undefined ? {
+      showUnchanged: true,
+      completeTree: { mergeBasePaths: ['src/unchanged.ts'], comparePaths: ['src/unchanged.ts'] },
+    } : {}));
+
+    expect(model.nodes[0]).toMatchObject({ kind: 'folder', status: expectedStatus });
+  });
+
+  test('measures metric widths from descendants below nested folders', () => {
+    const model = buildTreeModel(modelInput([
+      changed('modified', 'src/visible.ts', 'src/visible.ts', 1, 2),
+      changed('modified', 'src/collapsed/deep.ts', 'src/collapsed/deep.ts', 10_000, 10_000),
+    ]));
+
+    expect(model.metricColumnWidths).toEqual({ added: 4, modified: 1, deleted: 4 });
+  });
+
+  test('measures compact metric display strings instead of raw counts', () => {
+    const files = [
+      ...Array.from({ length: 10_000 }, (_, index) => changed('added', undefined, `added/file-${index}.ts`, 0, 0)),
+      ...Array.from({ length: 12_400 }, (_, index) => changed('modified', `modified/file-${index}.ts`, `modified/file-${index}.ts`, 0, 0)),
+      ...Array.from({ length: 10_000 }, (_, index) => changed('deleted', `deleted/file-${index}.ts`, undefined, 0, 0)),
+    ];
+
+    expect(buildTreeModel(modelInput(files)).metricColumnWidths).toEqual({
+      added: 4,
+      modified: 5,
+      deleted: 4,
     });
   });
 
@@ -212,12 +256,13 @@ describe('buildTreeModel', () => {
 
   test('uses dash metrics for a binary changed file', () => {
     const model = buildTreeModel(modelInput([
-      changed('modified', 'assets/logo.png', 'assets/logo.png', null, null),
+      changed('modified', 'logo.png', 'logo.png', null, null),
     ]));
 
     expect(flatten(model.nodes)[0]).toMatchObject({
       binary: true, additions: '—', deletions: '—',
     });
+    expect(model.metricColumnWidths).toEqual({ added: 0, modified: 0, deleted: 1 });
   });
 
   test('uses one compact formatter for 10,000-file summary and folder counts', () => {
